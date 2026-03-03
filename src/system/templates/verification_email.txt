@@ -1,0 +1,13 @@
+Lolskins.gg
+
+Account Verification
+
+Welcome, Summoner!
+{{ message }}
+
+Verification Code:
+{{ verification_code }}
+
+This code expires in 10 minutes
+
+This message was sent to {{ email }}. If you didn't request this, please ignore this email.

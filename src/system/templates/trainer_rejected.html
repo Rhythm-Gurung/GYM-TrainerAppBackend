@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trainer Application Update</title>
+    <style>
+        body { margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f5f5f5; }
+        .container { width: 100%; background-color: #f5f5f5; }
+        .wrapper { padding: 40px 20px; text-align: center; }
+        .email-box {
+            width: 100%; max-width: 520px; background-color: #ffffff;
+            border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin: 0 auto;
+        }
+        .header { padding: 30px 20px; border-bottom: 2px solid #c0392b; text-align: center; }
+        .header h1 { margin: 0; color: #c0392b; font-size: 28px; font-weight: bold; }
+        .header p { margin: 5px 0 0 0; color: #666666; font-size: 14px; }
+        .content { padding: 30px 20px; text-align: left; }
+        .greeting { margin: 0 0 16px 0; color: #333; font-size: 16px; font-weight: bold; }
+        .description { margin: 0 0 16px 0; color: #333333; font-size: 14px; line-height: 1.6; }
+        .badge {
+            display: inline-block; padding: 10px 20px; background-color: #fdecea;
+            border: 2px solid #c0392b; border-radius: 6px;
+            color: #c0392b; font-size: 16px; font-weight: bold; margin: 4px 0 20px 0;
+        }
+        .issues-box {
+            background-color: #fff8f8; border-left: 4px solid #c0392b;
+            border-radius: 4px; padding: 14px 18px; margin-bottom: 20px;
+        }
+        .issues-box ul { margin: 8px 0 0 0; padding-left: 20px; }
+        .issues-box li { color: #555; font-size: 14px; margin-bottom: 6px; line-height: 1.5; }
+        .reason-box {
+            background-color: #f9f9f9; border: 1px solid #ddd;
+            border-radius: 4px; padding: 14px 18px; margin-bottom: 20px;
+            color: #444; font-size: 14px; line-height: 1.6; font-style: italic;
+        }
+        .footer { padding: 20px; border-top: 1px solid #eeeeee; text-align: center; }
+        .footer p { margin: 0; color: #999999; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <table width="100%" cellpadding="0" cellspacing="0" class="container">
+        <tr>
+            <td class="wrapper">
+                <table width="100%" cellpadding="0" cellspacing="0" class="email-box">
+                    <tr>
+                        <td class="header">
+                            <h1>SETu</h1>
+                            <p>Trainer Application Update</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="content">
+                            <p class="greeting">Hello, {{ full_name }},</p>
+                            <p class="description">
+                                Thank you for applying to become a trainer on <strong>SETu</strong>.
+                                After reviewing your application, our admin team was unable to approve it at this time.
+                            </p>
+
+                            <div style="text-align:center;">
+                                <span class="badge">❌ Application Not Approved</span>
+                            </div>
+
+                            {% if problem_areas %}
+                            <div class="issues-box">
+                                <strong style="color:#c0392b;">Issues found with your application:</strong>
+                                <ul>
+                                    {% for area in problem_areas %}
+                                    <li>{{ area }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            {% endif %}
+
+                            {% if reason %}
+                            <p style="font-size:14px;color:#555;margin-bottom:8px;"><strong>Admin message:</strong></p>
+                            <div class="reason-box">{{ reason }}</div>
+                            {% endif %}
+
+                            <p class="description">
+                                You are welcome to re-apply after addressing the issues above.
+                                If you believe this decision was made in error, please contact our support team.
+                            </p>
+                            <p class="description" style="color:#666;font-size:13px;">
+                                Registered email: <strong>{{ email }}</strong>
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="footer">
+                            <p>&copy; SETu. All rights reserved.</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

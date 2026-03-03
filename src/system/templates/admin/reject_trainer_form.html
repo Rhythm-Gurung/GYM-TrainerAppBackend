@@ -1,0 +1,89 @@
+{% extends "admin/base_site.html" %}
+{% load i18n unfold %}
+
+{% block content %}
+<div class="mb-12">
+
+    {% component "unfold/components/title.html" %}
+        {% trans "Reject Trainer Account(s)" %}
+    {% endcomponent %}
+
+    {% component "unfold/components/text.html" %}
+        {% blocktrans with count=trainers|length %}
+            Rejecting {{ count }} trainer(s):
+        {% endblocktrans %}
+        {% for t in trainers %}
+            <strong>{{ t.full_name|default:t.username }}</strong> ({{ t.email }}){% if not forloop.last %}, {% endif %}
+        {% endfor %}
+    {% endcomponent %}
+
+    <form method="post" class="mt-6">
+        {% csrf_token %}
+        {% for trainer in trainers %}
+            <input type="hidden" name="_selected_action" value="{{ trainer.pk }}">
+        {% endfor %}
+        <input type="hidden" name="action" value="reject_trainers">
+        <input type="hidden" name="apply" value="1">
+
+        <!-- Problem Areas -->
+        <div class="border border-base-200 rounded-default shadow-xs dark:border-base-800 mb-5">
+            <div class="border-b border-base-200 dark:border-base-800 p-4">
+                <h3 class="font-semibold text-font-important-light dark:text-font-important-dark">
+                    {% trans "Select problem areas" %} <span class="text-red-500 ml-1">*</span>
+                </h3>
+                <p class="text-sm text-base-500 dark:text-base-400 mt-1">
+                    {% trans "Check all that apply — these will be listed in the rejection email." %}
+                </p>
+            </div>
+
+            <div class="p-4 flex flex-col gap-3">
+                {% for key, label in problem_area_labels.items %}
+                <label class="flex items-center gap-3 cursor-pointer group">
+                    <input
+                        type="checkbox"
+                        name="problem_areas"
+                        value="{{ key }}"
+                        class="w-4 h-4 rounded border-base-300 dark:border-base-600 text-primary-600 focus:ring-primary-500 bg-white dark:bg-base-800"
+                    >
+                    <span class="text-sm text-font-important-light dark:text-font-important-dark group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
+                        {{ label }}
+                    </span>
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Admin Message -->
+        <div class="border border-base-200 rounded-default shadow-xs dark:border-base-800 mb-6">
+            <div class="border-b border-base-200 dark:border-base-800 p-4">
+                <h3 class="font-semibold text-font-important-light dark:text-font-important-dark">
+                    {% trans "Additional message to trainer" %}
+                </h3>
+                <p class="text-sm text-base-500 dark:text-base-400 mt-1">
+                    {% trans "This message will be included verbatim in the rejection email." %}
+                </p>
+            </div>
+            <div class="p-4">
+                <textarea
+                    name="reason"
+                    rows="4"
+                    placeholder="e.g. Your certification document appears to be expired. Please re-apply with a valid document."
+                    class="w-full vTextField rounded-default border border-base-300 dark:border-base-700 bg-white dark:bg-base-900 text-font-important-light dark:text-font-important-dark placeholder-base-400 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                ></textarea>
+            </div>
+        </div>
+
+        <!-- Submit Row -->
+        <div class="flex items-center gap-3">
+            {% component "unfold/components/button.html" with submit=1 variant="danger" %}
+                ❌ {% trans "Reject & Send Email" %}
+            {% endcomponent %}
+
+            {% component "unfold/components/button.html" with href=request.META.HTTP_REFERER|default:"../../../" variant="default" %}
+                {% trans "Cancel" %}
+            {% endcomponent %}
+        </div>
+
+    </form>
+</div>
+{% endblock %}

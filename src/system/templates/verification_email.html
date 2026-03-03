@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify Your Account</title>
+    <!-- moved all inline styles to style tag -->
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            width: 100%;
+            background-color: #f5f5f5;
+        }
+
+        .wrapper {
+            padding: 40px 20px;
+            text-align: center;
+        }
+
+        .email-box {
+            width: 100%;
+            max-width: 500px;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            margin: 0 auto;
+        }
+
+        .header {
+            padding: 30px 20px;
+            border-bottom: 2px solid #0066cc;
+            text-align: center;
+        }
+
+        .header h1 {
+            margin: 0;
+            color: #0066cc;
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .header p {
+            margin: 5px 0 0 0;
+            color: #666666;
+            font-size: 14px;
+        }
+
+        .content {
+            padding: 30px 20px;
+            text-align: left;
+        }
+
+        .welcome {
+            margin: 0 0 20px 0;
+            color: #0066cc;
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        .description {
+            margin: 0 0 30px 0;
+            color: #333333;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .code-box {
+            padding: 20px;
+            background-color: #f9f9f9;
+            border-radius: 6px;
+            border: 2px solid #0066cc;
+            text-align: center;
+        }
+
+        .verification-code {
+            margin: 0;
+            color: #0066cc;
+            font-size: 32px;
+            font-weight: bold;
+            letter-spacing: 4px;
+            font-family: monospace;
+        }
+
+        .expiry {
+            margin: 20px 0 0 0;
+            color: #999999;
+            font-size: 12px;
+            text-align: center;
+        }
+
+        .footer {
+            padding: 20px;
+            border-top: 1px solid #eeeeee;
+            text-align: center;
+        }
+
+        .footer p {
+            margin: 0;
+            color: #999999;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <table width="100%" cellpadding="0" cellspacing="0" class="container">
+        <tr>
+            <td class="wrapper">
+                <table width="100%" cellpadding="0" cellspacing="0" class="email-box">
+                    <!-- Header -->
+                    <tr>
+                        <td class="header">
+                            <h1>SETu</h1>
+                            <p>Account Verification</p>
+                        </td>
+                    </tr>
+
+                    <!-- Content -->
+                    <tr>
+                        <td class="content">
+                            <p class="welcome">Welcome, Summoner!</p>
+                            <p class="description">{{ message }}</p>
+
+                            <!-- Verification Code -->
+                            <table width="100%" cellpadding="0" cellspacing="0">
+                                <tr>
+                                    <td class="code-box">
+                                        <p class="verification-code">{{ verification_code }}</p>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <p class="expiry">This code expires in 10 minutes</p>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td class="footer">
+                            <p>This message was sent to {{ email }}. If you didn't request this, please ignore this email.</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

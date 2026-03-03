@@ -1,0 +1,91 @@
+name: CI Workflow
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+      - dev
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v1
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run linting with Ruff
+        run: uv run ruff check .
+
+  build-and-migrate:
+    runs-on: ubuntu-latest
+    needs: lint
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: github_actions
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v1
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Check Python version
+        run: uv run python --version
+
+      - name: Setup environment variables
+        working-directory: ./src
+        run: |
+          echo "SECRET_KEY=test-secret-key-for-ci-$(date +%s)" >> .env
+          echo "DB_USER=postgres" >> .env
+          echo "DB_PASSWORD=postgres" >> .env
+          echo "DB_NAME=github_actions" >> .env
+          echo "DB_HOST=127.0.0.1" >> .env
+          echo "DEBUG=True" >> .env
+
+      - name: Wait for PostgreSQL to be ready
+        run: |
+          for i in {1..10}; do
+            if nc -z 127.0.0.1 5432; then
+              echo "PostgreSQL is ready!"
+              exit 0
+            fi
+            echo "Waiting... Attempt $i"
+            sleep 2
+          done
+          echo "PostgreSQL failed to start"
+          exit 1
+
+      - name: Run database migrations
+        working-directory: ./src
+        run: uv run python manage.py migrate
+
+      - name: Verify app can start
+        working-directory: ./src
+        run: |
+          timeout 5s uv run python -m gunicorn core.wsgi:application --bind localhost:8094 --workers 1 &
+          sleep 2
+          echo "Application startup test completed"
