@@ -26,7 +26,9 @@ PROBLEM_AREA_LABELS = {
 @admin.action(description="✅ Approve selected trainer accounts")
 def approve_trainers(modeladmin, request, queryset):
     pending = list(queryset.filter(is_trainer=True, is_admin_approved=False))
-    updated = queryset.filter(is_trainer=True).update(is_admin_approved=True, is_rejected=False)
+    updated = queryset.filter(is_trainer=True).update(
+        is_admin_approved=True, is_rejected=False, verification_status='verified'
+    )
 
     email_errors = []
     for trainer in pending:
@@ -51,6 +53,92 @@ def approve_trainers(modeladmin, request, queryset):
         )
     else:
         modeladmin.message_user(request, f"{updated} trainer(s) approved and notified via email.")
+
+
+@admin.action(description="🔄 Re-verify selected trainer accounts (mark as Verified)")
+def reverify_trainers(modeladmin, request, queryset):
+    updated = queryset.filter(
+        is_trainer=True,
+        is_admin_approved=True,
+        verification_status='re_verification_required',
+    ).update(verification_status='verified')
+    if updated:
+        modeladmin.message_user(request, f"{updated} trainer(s) re-verified successfully.")
+    else:
+        modeladmin.message_user(
+            request,
+            "No eligible trainers found (must be approved and awaiting re-verification).",
+            level='warning',
+        )
+
+
+@admin.action(description="❌ Reject re-verification for selected trainers")
+def reject_reverification(modeladmin, request, queryset):
+    trainers = queryset.filter(
+        is_trainer=True,
+        is_admin_approved=True,
+        verification_status='re_verification_required',
+    )
+
+    if 'apply_reverify_reject' in request.POST:
+        selected_areas = request.POST.getlist('problem_areas')
+        reason = request.POST.get('reason', '').strip()
+
+        if not selected_areas and not reason:
+            modeladmin.message_user(
+                request,
+                "Please select at least one problem area or provide a reason.",
+                level='error',
+            )
+            return render(request, 'admin/reject_trainer_form.html', {
+                'trainers': list(trainers),
+                'problem_area_labels': PROBLEM_AREA_LABELS,
+                'action_flag': 'apply_reverify_reject',
+                'action_title': 'Reject Re-verification',
+            })
+
+        problem_area_texts = [PROBLEM_AREA_LABELS[k] for k in selected_areas if k in PROBLEM_AREA_LABELS]
+        affected = list(trainers)
+        trainers.update(verification_status='reverification_rejected')
+
+        email_errors = []
+        for trainer in affected:
+            try:
+                send_emails(
+                    template='reverification_rejected.html',
+                    recipient_list=[trainer.email],
+                    subject='Action required: GymJam profile update rejected',
+                    context={
+                        'full_name': trainer.full_name or trainer.username,
+                        'email': trainer.email,
+                        'problem_areas': problem_area_texts,
+                        'reason': reason,
+                    }
+                )
+            except Exception as e:
+                email_errors.append(f"{trainer.email}: {e}")
+
+        msg = f"{len(affected)} trainer(s) re-verification rejected."
+        if email_errors:
+            modeladmin.message_user(request, f"{msg} Email failed — {'; '.join(email_errors)}", level='error')
+        else:
+            modeladmin.message_user(request, f"{msg} Trainers notified via email.")
+        return None
+
+    if not trainers.exists():
+        modeladmin.message_user(
+            request,
+            "No eligible trainers selected (must be approved and awaiting re-verification).",
+            level='warning',
+        )
+        return None
+
+    return render(request, 'admin/reject_trainer_form.html', {
+        'trainers': list(trainers),
+        'problem_area_labels': PROBLEM_AREA_LABELS,
+        'action_flag': 'apply_reverify_reject',
+        'action_title': 'Reject Re-verification',
+    })
 
 
 @admin.action(description="❌ Reject selected trainer accounts")
@@ -145,16 +233,16 @@ class TrainerCertificationInline(admin.TabularInline):
 @admin.register(UserBase)
 class UserBaseAdmin(ModelAdmin):
     list_display = (
-        'email', 'username', 'is_trainer', 'approval_status',
+        'email', 'username', 'is_trainer', 'approval_status', 'verification_status_display',
         'is_email_verified', 'is_active', 'created_at'
     )
-    list_filter = ('is_trainer', 'is_admin_approved', 'is_email_verified', 'is_active', 'is_staff')
+    list_filter = ('is_trainer', 'is_admin_approved', 'is_email_verified', 'is_active', 'is_staff', 'verification_status')
     search_fields = ('email', 'username', 'first_name', 'last_name', 'full_name')
     readonly_fields = (
         'uuid', 'created_at', 'updated_at', 'last_login',
         'profile_image_preview', 'id_proof_preview',
     )
-    actions = [approve_trainers, reject_trainers]
+    actions = [approve_trainers, reverify_trainers, reject_reverification, reject_trainers]
     inlines = [TrainerCertificationInline]
 
     fieldsets = (
@@ -162,7 +250,7 @@ class UserBaseAdmin(ModelAdmin):
             'fields': ('uuid', 'email', 'username', 'password', 'is_active', 'is_staff', 'is_superuser')
         }),
         ('Verification & Approval', {
-            'fields': ('is_email_verified', 'is_trainer', 'is_admin_approved')
+            'fields': ('is_email_verified', 'is_trainer', 'is_admin_approved', 'verification_status')
         }),
         ('Personal Info', {
             'classes': ('collapse',),
@@ -193,10 +281,25 @@ class UserBaseAdmin(ModelAdmin):
     def approval_status(self, obj):
         if not obj.is_trainer:
             return format_html('<span style="color:gray;">{}</span>', 'N/A (Client)')
+        if obj.is_rejected:
+            return format_html('<span style="color:red;font-weight:bold;">{}</span>', '❌ Rejected')
         if obj.is_admin_approved:
             return format_html('<span style="color:green;font-weight:bold;">{}</span>', '✅ Approved')
         return format_html('<span style="color:orange;font-weight:bold;">{}</span>', '⏳ Pending')
     approval_status.short_description = 'Approval'
+
+    def verification_status_display(self, obj):
+        if not obj.is_trainer:
+            return format_html('<span style="color:gray;">{}</span>', '—')
+        badges = {
+            'verified':                 ('green',    '✅ Verified'),
+            'pending':                  ('orange',   '⏳ Pending'),
+            're_verification_required': ('red',      '🔄 Re-verification Required'),
+            'reverification_rejected':  ('#c0392b',  '❌ Rejected (update)'),
+        }
+        color, label = badges.get(obj.verification_status, ('gray', obj.verification_status))
+        return format_html('<span style="color:{};font-weight:bold;">{}</span>', color, label)
+    verification_status_display.short_description = 'Verification'
 
     def profile_image_preview(self, obj):
         if obj.profile_image:

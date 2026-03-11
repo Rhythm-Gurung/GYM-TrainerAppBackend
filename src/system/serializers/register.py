@@ -1,11 +1,10 @@
-import base64
+import json
 import os
 import re
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from django.core.files.base import ContentFile
 from django.core.validators import validate_email
 from django.db import IntegrityError, transaction
 from rest_framework import serializers
@@ -19,23 +18,6 @@ TRAINER_REQUIRED_FIELDS = [
     'expertise_categories', 'years_of_experience',
     'pricing_per_session', 'session_type',
 ]
-
-
-def _decode_base64(b64_string):
-    """
-    Accepts either:
-      - Raw base64:  'iVBORw0KGgo...'
-      - Data URI:    'data:image/jpeg;base64,iVBORw0KGgo...'
-    Returns (bytes, content_type).
-    """
-    if ',' in b64_string:
-        header, data = b64_string.split(',', 1)
-        content_type = header.split(';')[0].split(':')[1]
-    else:
-        data = b64_string
-        content_type = 'image/jpeg'
-    return base64.b64decode(data), content_type
-
 
 def _save_file_locally(file_bytes, filename):
     local_dir = os.path.join(settings.MEDIA_ROOT, 'trainer_uploads')
@@ -69,19 +51,13 @@ class UserRegisterSerializer(serializers.Serializer):
         choices=['online', 'offline', 'both'], required=False
     )
 
-    # Trainer image fields — sent as base64 encoded strings
-    profile_image = serializers.CharField(
-        required=False, allow_blank=True,
-        help_text="Base64 encoded image. Accepts raw base64 or data URI (data:image/jpeg;base64,...)"
-    )
-    id_proof = serializers.CharField(
-        required=False, allow_blank=True,
-        help_text="Base64 encoded image. Required for trainers."
-    )
+    # Trainer image fields — sent as multipart files
+    profile_image = serializers.ImageField(required=False)
+    id_proof = serializers.ImageField(required=False)
     certifications = serializers.ListField(
-        child=serializers.CharField(),
+        child=serializers.ImageField(),
         required=False,
-        help_text="List of base64 encoded certification images. At least one required for trainers."
+        help_text="List of certification image files. At least one required for trainers."
     )
 
     def validate_email(self, value):
@@ -106,6 +82,25 @@ class UserRegisterSerializer(serializers.Serializer):
     def validate(self, attrs):
         if attrs['password'] != attrs['confirm_password']:
             raise serializers.ValidationError({"confirm_password": "Passwords do not match."})
+
+        # Multipart form data may provide list values as JSON strings.
+        expertise_categories = attrs.get('expertise_categories')
+        if isinstance(expertise_categories, str):
+            try:
+                parsed = json.loads(expertise_categories)
+                if not isinstance(parsed, list):
+                    raise serializers.ValidationError
+                attrs['expertise_categories'] = parsed
+            except (json.JSONDecodeError, serializers.ValidationError):
+                attrs['expertise_categories'] = [
+                    item.strip() for item in expertise_categories.split(',') if item.strip()
+                ]
+
+        request = self.context.get('request')
+        if request:
+            cert_files = request.FILES.getlist('certifications')
+            if cert_files:
+                attrs['certifications'] = cert_files
 
         if attrs.get('is_trainer'):
             errors = {}
@@ -133,15 +128,16 @@ class UserRegisterSerializer(serializers.Serializer):
         is_trainer = validated_data.get('is_trainer', False)
 
         # Extract image fields before passing to create_user
-        profile_image_b64 = validated_data.pop('profile_image', None)
-        id_proof_b64 = validated_data.pop('id_proof', None)
-        certifications_b64 = validated_data.pop('certifications', [])
+        profile_image_file = validated_data.pop('profile_image', None)
+        id_proof_file = validated_data.pop('id_proof', None)
+        certifications_files = validated_data.pop('certifications', [])
 
-        # Decode id_proof → bytes for BinaryField
+        # Convert id_proof file to bytes for BinaryField storage.
         id_proof_bytes = None
         id_proof_content_type = None
-        if id_proof_b64:
-            id_proof_bytes, id_proof_content_type = _decode_base64(id_proof_b64)
+        if id_proof_file:
+            id_proof_bytes = id_proof_file.read()
+            id_proof_content_type = id_proof_file.content_type or 'image/jpeg'
             validated_data['id_proof'] = id_proof_bytes
             validated_data['id_proof_content_type'] = id_proof_content_type
 
@@ -169,14 +165,8 @@ class UserRegisterSerializer(serializers.Serializer):
                 user.save()
 
                 # Save profile_image via Django's ImageField
-                if profile_image_b64:
-                    img_bytes, content_type = _decode_base64(profile_image_b64)
-                    ext = content_type.split('/')[-1]
-                    user.profile_image.save(
-                        f"profile_{user.id}.{ext}",
-                        ContentFile(img_bytes),
-                        save=True
-                    )
+                if profile_image_file:
+                    user.profile_image.save(profile_image_file.name, profile_image_file, save=True)
 
                 # Save id_proof locally as well
                 if id_proof_bytes:
@@ -184,13 +174,14 @@ class UserRegisterSerializer(serializers.Serializer):
                     _save_file_locally(id_proof_bytes, f"id_proof_{user.id}.{ext}")
 
                 if is_trainer:
-                    for index, cert_b64 in enumerate(certifications_b64):
-                        cert_bytes, cert_content_type = _decode_base64(cert_b64)
+                    for index, cert_file in enumerate(certifications_files):
+                        cert_bytes = cert_file.read()
+                        cert_content_type = cert_file.content_type or 'image/jpeg'
                         ext = cert_content_type.split('/')[-1]
                         _save_file_locally(cert_bytes, f"cert_{user.id}_{index}.{ext}")
                         TrainerCertification.objects.create(
                             user=user,
-                            name=f"cert_{index}.{ext}",
+                            name=cert_file.name or f"cert_{index}.{ext}",
                             image=cert_bytes,
                             content_type=cert_content_type,
                         )

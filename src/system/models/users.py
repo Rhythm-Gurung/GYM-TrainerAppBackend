@@ -39,6 +39,13 @@ class UserBase(AbstractBaseUser, PermissionsMixin):
         ('both', 'Both'),
     ]
 
+    VERIFICATION_STATUS = [
+        ('pending',                    'Pending'),
+        ('verified',                   'Verified'),
+        ('re_verification_required',   'Re-verification Required'),
+        ('reverification_rejected',    'Re-verification Rejected'),
+    ]
+
     uuid = models.UUIDField(unique=True, default=uuid.uuid4)
 
     email = models.EmailField(unique=True)
@@ -53,6 +60,12 @@ class UserBase(AbstractBaseUser, PermissionsMixin):
         validators=[validate_image_file_extension]
     )
     dob = models.DateField(null=True, blank=True)
+
+    verification_status = models.CharField(
+        max_length=30,
+        choices=VERIFICATION_STATUS,
+        default='pending',
+    )
 
     # Role
     is_trainer = models.BooleanField(default=False)

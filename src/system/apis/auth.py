@@ -10,6 +10,7 @@ from google.oauth2 import id_token
 from rest_framework import serializers, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import NotAuthenticated
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -342,7 +343,7 @@ def unlink_social_account(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def whoami(request):
-    return Response({"status": True, "data": UserBaseDetailSerializer(instance=request.user).data})
+    return Response({"status": True, "data": UserBaseDetailSerializer(instance=request.user, context={"request": request}).data})
 
 
 @extend_schema(
@@ -364,6 +365,7 @@ def logout(request):
 class UserRegisterAPIView(APIView):
     permission_classes = [AllowAny]
     serializer_class = UserRegisterSerializer
+    parser_classes = [MultiPartParser, FormParser]
 
     @extend_schema(
         summary="User Registration",
@@ -375,7 +377,7 @@ class UserRegisterAPIView(APIView):
         tags=["Authentication"]
     )
     def post(self, request):
-        serializer = UserRegisterSerializer(data=request.data)
+        serializer = UserRegisterSerializer(data=request.data, context={"request": request})
         if serializer.is_valid():
             user = serializer.save()
             if user.is_trainer:
