@@ -1,4 +1,5 @@
 import os
+import uuid
 
 from django.conf import settings
 from django.http import HttpResponse
@@ -8,7 +9,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from system.models import TrainerCertification, UserBase
+from system.models import TrainerCertification, TrainerGalleryImage, TrainerProfileChangeLog, UserBase
 from system.serializers.users import MessageResponseSerializer, TrainerUpdateProfileSerializer
 
 _IMAGE_CONTENT_TYPES = {
@@ -95,6 +96,8 @@ def id_proof_view(request):
     user.id_proof_content_type = id_proof_content_type
     user.verification_status = 're_verification_required'
     user.save(update_fields=['id_proof', 'id_proof_content_type', 'verification_status'])
+
+    TrainerProfileChangeLog.objects.create(user=user, action='id_proof_updated')
 
     ext = id_proof_content_type.split('/')[-1]
     _save_file_locally(id_proof_bytes, f"id_proof_{user.id}.{ext}")
@@ -193,6 +196,13 @@ def certifications_list_view(request):
     user.verification_status = 're_verification_required'
     user.save(update_fields=['verification_status'])
 
+    for c in created:
+        TrainerProfileChangeLog.objects.create(
+            user=user,
+            action='certification_added',
+            changes={'name': c['name']},
+        )
+
     return Response({"status": True, "data": created}, status=status.HTTP_201_CREATED)
 
 
@@ -242,9 +252,15 @@ def certification_detail_view(request, cert_id):
         return HttpResponse(bytes(cert.image), content_type=cert.content_type)
 
     # DELETE
+    cert_name = cert.name
     cert.delete()
     user.verification_status = 're_verification_required'
     user.save(update_fields=['verification_status'])
+    TrainerProfileChangeLog.objects.create(
+        user=user,
+        action='certification_deleted',
+        changes={'name': cert_name},
+    )
     return Response(
         {"status": True, "message": "Certification deleted successfully."},
         status=status.HTTP_200_OK,
@@ -376,8 +392,161 @@ def update_profile_view(request):
     if changed_sensitive:
         user.verification_status = 're_verification_required'
         user.save(update_fields=['verification_status'])
+        field_diff = {
+            f: {'old': str(old_values[f]), 'new': str(serializer.validated_data[f])}
+            for f in sensitive_fields
+            if f in serializer.validated_data and serializer.validated_data[f] != old_values[f]
+        }
+        TrainerProfileChangeLog.objects.create(
+            user=user,
+            action='profile_fields_updated',
+            changes=field_diff,
+        )
 
     return Response({"status": True, "data": serializer.data}, status=status.HTTP_200_OK)
+
+
+# ---------------------------------------------------------------------------
+# Gallery  –  GET list / POST upload  |  GET image / DELETE
+# ---------------------------------------------------------------------------
+
+@extend_schema(
+    methods=['GET'],
+    summary="List Trainer Gallery Images",
+    responses={
+        200: OpenApiResponse(description="List of gallery image metadata"),
+        403: OpenApiResponse(response=MessageResponseSerializer, description="Forbidden"),
+    },
+    tags=["Trainer"],
+)
+@extend_schema(
+    methods=['POST'],
+    summary="Upload Trainer Gallery Images",
+    request={
+        'multipart/form-data': {
+            'type': 'object',
+            'properties': {
+                'images': {
+                    'type': 'array',
+                    'items': {'type': 'string', 'format': 'binary'},
+                },
+                'caption': {'type': 'string'},
+            },
+            'required': ['images'],
+        }
+    },
+    responses={
+        201: OpenApiResponse(description="Created – list of new gallery image metadata"),
+        400: OpenApiResponse(response=MessageResponseSerializer, description="Bad Request"),
+        403: OpenApiResponse(response=MessageResponseSerializer, description="Forbidden"),
+    },
+    tags=["Trainer"],
+)
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def gallery_list_view(request):
+    user = request.user
+    if not user.is_trainer:
+        return Response(
+            {"status": False, "message": "Only trainers can access this."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    if request.method == "GET":
+        images = TrainerGalleryImage.objects.filter(user=user).values(
+            'id', 'caption', 'collection_id', 'content_type', 'created_at'
+        )
+        data = []
+        for img in images:
+            img['collection_id'] = str(img['collection_id']) if img['collection_id'] else None
+            img['image_url'] = request.build_absolute_uri(
+                f"/api/system/trainer/gallery/{img['id']}/"
+            )
+            data.append(img)
+        return Response({"status": True, "data": data}, status=status.HTTP_200_OK)
+
+    # POST – upload one or more images
+    image_files = request.FILES.getlist('images')
+    if not image_files:
+        return Response(
+            {"status": False, "message": "At least one image file is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    caption = request.data.get('caption', '')
+    collection_id = uuid.uuid4()
+    created = []
+    for image_file in image_files:
+        image_bytes = image_file.read()
+        content_type = image_file.content_type or 'image/jpeg'
+        gallery_img = TrainerGalleryImage.objects.create(
+            user=user,
+            image=image_bytes,
+            content_type=content_type,
+            caption=caption,
+            collection_id=collection_id,
+        )
+        created.append({
+            'id': gallery_img.id,
+            'caption': gallery_img.caption,
+            'collection_id': str(gallery_img.collection_id),
+            'content_type': gallery_img.content_type,
+            'created_at': gallery_img.created_at,
+            'image_url': request.build_absolute_uri(
+                f"/api/system/trainer/gallery/{gallery_img.id}/"
+            ),
+        })
+
+    return Response({"status": True, "data": created}, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(
+    methods=['GET'],
+    summary="Get Trainer Gallery Image",
+    responses={
+        200: OpenApiResponse(description="Image binary"),
+        403: OpenApiResponse(response=MessageResponseSerializer, description="Forbidden"),
+        404: OpenApiResponse(response=MessageResponseSerializer, description="Not Found"),
+    },
+    tags=["Trainer"],
+)
+@extend_schema(
+    methods=['DELETE'],
+    summary="Delete Trainer Gallery Image",
+    responses={
+        200: OpenApiResponse(response=MessageResponseSerializer, description="Deleted"),
+        403: OpenApiResponse(response=MessageResponseSerializer, description="Forbidden"),
+        404: OpenApiResponse(response=MessageResponseSerializer, description="Not Found"),
+    },
+    tags=["Trainer"],
+)
+@api_view(["GET", "DELETE"])
+@permission_classes([IsAuthenticated])
+def gallery_detail_view(request, image_id):
+    user = request.user
+    if not user.is_trainer:
+        return Response(
+            {"status": False, "message": "Only trainers can access this."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    try:
+        gallery_img = TrainerGalleryImage.objects.get(id=image_id, user=user)
+    except TrainerGalleryImage.DoesNotExist:
+        return Response(
+            {"status": False, "message": "Image not found."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    if request.method == "GET":
+        return HttpResponse(bytes(gallery_img.image), content_type=gallery_img.content_type)
+
+    # DELETE
+    gallery_img.delete()
+    return Response(
+        {"status": True, "message": "Gallery image deleted successfully."},
+        status=status.HTTP_200_OK,
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -2,10 +2,10 @@ import base64
 
 from django.contrib import admin
 from django.shortcuts import render
-from django.utils.html import format_html
+from django.utils.html import escape, format_html, mark_safe
 from unfold.admin import ModelAdmin
 
-from system.models import TrainerCertification, UserBase, UserBaseAddress, VerificationCode
+from system.models import TrainerCertification, TrainerGalleryImage, TrainerProfileChangeLog, UserBase, UserBaseAddress, VerificationCode
 from system.tasks import send_emails
 
 PROBLEM_AREA_LABELS = {
@@ -208,6 +208,24 @@ def reject_trainers(modeladmin, request, queryset):
 # Inlines
 # ──────────────────────────────────────────
 
+class TrainerGalleryInline(admin.TabularInline):
+    model = TrainerGalleryImage
+    extra = 0
+    can_delete = False
+    readonly_fields = ('gallery_preview', 'caption', 'content_type', 'created_at')
+    fields = ('gallery_preview', 'caption', 'content_type', 'created_at')
+
+    def gallery_preview(self, obj):
+        if obj.image:
+            data = base64.b64encode(bytes(obj.image)).decode('utf-8')
+            return format_html(
+                '<img src="data:{};base64,{}" style="max-height:160px;max-width:220px;border-radius:6px;" />',
+                obj.content_type, data
+            )
+        return "No image"
+    gallery_preview.short_description = 'Image'
+
+
 class TrainerCertificationInline(admin.TabularInline):
     model = TrainerCertification
     extra = 0
@@ -236,14 +254,15 @@ class UserBaseAdmin(ModelAdmin):
         'email', 'username', 'is_trainer', 'approval_status', 'verification_status_display',
         'is_email_verified', 'is_active', 'created_at'
     )
-    list_filter = ('is_trainer', 'is_admin_approved', 'is_email_verified', 'is_active', 'is_staff', 'verification_status')
+    list_filter = ('is_trainer', 'is_admin_approved',  'is_email_verified', 'is_active', 'is_staff', 'verification_status')
     search_fields = ('email', 'username', 'first_name', 'last_name', 'full_name')
     readonly_fields = (
         'uuid', 'created_at', 'updated_at', 'last_login',
         'profile_image_preview', 'id_proof_preview',
+        'pending_changes_section',
     )
     actions = [approve_trainers, reverify_trainers, reject_reverification, reject_trainers]
-    inlines = [TrainerCertificationInline]
+    inlines = [TrainerGalleryInline, TrainerCertificationInline]
 
     fieldsets = (
         ('Account', {
@@ -251,6 +270,9 @@ class UserBaseAdmin(ModelAdmin):
         }),
         ('Verification & Approval', {
             'fields': ('is_email_verified', 'is_trainer', 'is_admin_approved', 'verification_status')
+        }),
+        ('Pending Changes (Re-verification)', {
+            'fields': ('pending_changes_section',),
         }),
         ('Personal Info', {
             'classes': ('collapse',),
@@ -320,6 +342,94 @@ class UserBaseAdmin(ModelAdmin):
             )
         return "No ID proof uploaded"
     id_proof_preview.short_description = 'ID Proof'
+
+    _ACTION_LABELS = {
+        'id_proof_updated':       ('🪪', 'ID Proof Updated'),
+        'certification_added':    ('📄', 'Certification Added'),
+        'certification_deleted':  ('🗑️', 'Certification Deleted'),
+        'profile_fields_updated': ('✏️', 'Profile Fields Updated'),
+    }
+
+    _FIELD_LABELS = {
+        'years_of_experience': 'Years of Experience',
+        'pricing_per_session': 'Pricing per Session',
+        'session_type':        'Session Type',
+        'expertise_categories': 'Expertise Categories',
+    }
+
+    def pending_changes_section(self, obj):
+        if not obj.is_trainer:
+            return mark_safe('<p style="color:gray;">Not applicable — this is a client account.</p>')
+
+        logs = TrainerProfileChangeLog.objects.filter(user=obj).order_by('-changed_at')[:20]
+
+        if not logs.exists():
+            if obj.verification_status == 're_verification_required':
+                return mark_safe(
+                    '<p style="color:orange;">Re-verification required but no change log recorded '
+                    '(changes may have been made before logging was enabled).</p>'
+                )
+            return mark_safe('<p style="color:gray;">No pending changes recorded.</p>')
+
+        rows = []
+        for log in logs:
+            icon, label = self._ACTION_LABELS.get(log.action, ('🔧', log.action))
+            when = log.changed_at.strftime('%Y-%m-%d %H:%M UTC')
+
+            detail_html = ''
+            if log.action == 'profile_fields_updated' and log.changes:
+                field_rows = ''
+                for field, diff in log.changes.items():
+                    field_label = escape(self._FIELD_LABELS.get(field, field))
+                    old_val = escape(str(diff.get('old', '—')))
+                    new_val = escape(str(diff.get('new', '—')))
+                    field_rows += (
+                        f'<tr>'
+                        f'<td style="padding:2px 8px;color:#555;">{field_label}</td>'
+                        f'<td style="padding:2px 8px;color:#c0392b;text-decoration:line-through;">{old_val}</td>'
+                        f'<td style="padding:2px 8px;color:#27ae60;">{new_val}</td>'
+                        f'</tr>'
+                    )
+                detail_html = (
+                    '<table style="margin-top:4px;border-collapse:collapse;font-size:12px;">'
+                    '<tr><th style="padding:2px 8px;text-align:left;color:#333;">Field</th>'
+                    '<th style="padding:2px 8px;text-align:left;color:#333;">Old</th>'
+                    '<th style="padding:2px 8px;text-align:left;color:#333;">New</th></tr>'
+                    + field_rows +
+                    '</table>'
+                )
+            elif log.action in ('certification_added', 'certification_deleted') and log.changes.get('name'):
+                cert_name = escape(log.changes['name'])
+                detail_html = f'<span style="font-size:12px;color:#555;">File: {cert_name}</span>'
+
+            rows.append(
+                f'<li style="margin-bottom:10px;padding:8px 12px;background:#f9f9f9;'
+                f'border-left:4px solid #e67e22;border-radius:4px;">'
+                f'<strong>{icon} {escape(label)}</strong> '
+                f'<span style="color:gray;font-size:12px;">— {when}</span>'
+                f'{detail_html}'
+                f'</li>'
+            )
+
+        status_color = {
+            're_verification_required': '#e67e22',
+            'reverification_rejected':  '#c0392b',
+            'verified':                 '#27ae60',
+            'pending':                  '#7f8c8d',
+        }.get(obj.verification_status, '#7f8c8d')
+
+        header = format_html(
+            '<p style="margin-bottom:8px;">Current status: '
+            '<strong style="color:{};">{}</strong></p>',
+            status_color,
+            obj.get_verification_status_display(),
+        )
+        list_html = mark_safe(
+            '<ul style="margin:0;padding:0;list-style:none;">' + ''.join(rows) + '</ul>'
+        )
+        return header + list_html
+
+    pending_changes_section.short_description = 'Trainer Change History'
 
 
 # ──────────────────────────────────────────

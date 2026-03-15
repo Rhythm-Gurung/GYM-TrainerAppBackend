@@ -21,6 +21,8 @@ from system.apis.trainer import (
     admin_verify_trainer_view,
     certification_detail_view,
     certifications_list_view,
+    gallery_detail_view,
+    gallery_list_view,
     id_proof_view,
     profile_image_view,
     update_profile_view,
@@ -61,5 +63,7 @@ urlpatterns = [
     path('trainer/certifications/<int:cert_id>/', certification_detail_view, name='trainer-certification-image'),
     path('trainer/profile-image/', profile_image_view, name='trainer-profile-image'),
     path('trainer/update-profile/', update_profile_view, name='trainer-update-profile'),
+    path('trainer/gallery/', gallery_list_view, name='trainer-gallery'),
+    path('trainer/gallery/<int:image_id>/', gallery_detail_view, name='trainer-gallery-image'),
     path('admin/trainer/<int:trainer_id>/verify/', admin_verify_trainer_view, name='admin-trainer-verify'),
 ]
