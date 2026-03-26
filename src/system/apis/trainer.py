@@ -155,7 +155,7 @@ def certifications_list_view(request):
 
     if request.method == "GET":
         certs = TrainerCertification.objects.filter(user=user).values(
-            'id', 'name', 'content_type', 'created_at'
+            'id', 'name', 'issuer', 'year', 'content_type', 'created_at'
         )
         data = []
         for cert in certs:
@@ -172,6 +172,10 @@ def certifications_list_view(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    issuer = request.data.get('issuer', '')
+    raw_year = request.data.get('year')
+    year = int(raw_year) if raw_year not in (None, '', 'null') else None
+
     created = []
     for cert_file in cert_files:
         cert_bytes = cert_file.read()
@@ -181,6 +185,8 @@ def certifications_list_view(request):
         cert = TrainerCertification.objects.create(
             user=user,
             name=cert_file.name or f"certification.{ext}",
+            issuer=issuer,
+            year=year,
             image=cert_bytes,
             content_type=cert_content_type,
         )
@@ -188,6 +194,8 @@ def certifications_list_view(request):
         created.append({
             'id': cert.id,
             'name': cert.name,
+            'issuer': cert.issuer,
+            'year': cert.year,
             'content_type': cert.content_type,
             'created_at': cert.created_at,
             'image_url': request.build_absolute_uri(path),
@@ -221,6 +229,16 @@ def certifications_list_view(request):
     tags=["Trainer"],
 )
 @extend_schema(
+    methods=['PATCH'],
+    summary="Update Trainer Certification Metadata",
+    responses={
+        200: OpenApiResponse(description="Updated certification metadata"),
+        403: OpenApiResponse(response=MessageResponseSerializer, description="Forbidden"),
+        404: OpenApiResponse(response=MessageResponseSerializer, description="Not Found"),
+    },
+    tags=["Trainer"],
+)
+@extend_schema(
     methods=['DELETE'],
     summary="Delete Trainer Certification",
     responses={
@@ -230,7 +248,7 @@ def certifications_list_view(request):
     },
     tags=["Trainer"],
 )
-@api_view(["GET", "DELETE"])
+@api_view(["GET", "PATCH", "DELETE"])
 @permission_classes([IsAuthenticated])
 def certification_detail_view(request, cert_id):
     user = request.user
@@ -250,6 +268,27 @@ def certification_detail_view(request, cert_id):
 
     if request.method == "GET":
         return HttpResponse(bytes(cert.image), content_type=cert.content_type)
+
+    if request.method == "PATCH":
+        if 'name' in request.data:
+            cert.name = request.data['name']
+        if 'issuer' in request.data:
+            cert.issuer = request.data['issuer']
+        if 'year' in request.data:
+            raw_year = request.data['year']
+            cert.year = int(raw_year) if raw_year not in (None, '', 'null') else None
+        cert.save()
+        return Response({
+            'status': True,
+            'data': {
+                'id': cert.id,
+                'name': cert.name,
+                'issuer': cert.issuer,
+                'year': cert.year,
+                'content_type': cert.content_type,
+                'created_at': cert.created_at,
+            },
+        }, status=status.HTTP_200_OK)
 
     # DELETE
     cert_name = cert.name

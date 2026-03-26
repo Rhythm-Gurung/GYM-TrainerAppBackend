@@ -16,6 +16,7 @@ from system.apis.auth import (
     verify_forgot_password,
     whoami,
 )
+from system.apis.client import client_profile_image_view, client_profile_view
 from system.apis.health import health_check
 from system.apis.trainer import (
     admin_verify_trainer_view,
@@ -55,6 +56,10 @@ urlpatterns = [
     # Email verification (OTP-based; trainers skip this flow)
     path('auth/verify-email/', verify_email, name='verify-email'),
     path('auth/resend-verification/', resend_verification_code, name='resend-verification'),
+
+    # Client profile
+    path('client/profile/',        client_profile_view,       name='client-profile'),
+    path('client/profile-image/',  client_profile_image_view, name='client-profile-image'),
 
     # --- Admin / Trainer ---
     # Trainer document access (used by admin to review during approval)

@@ -22,7 +22,7 @@ class UserBaseDetailSerializer(serializers.ModelSerializer):
             'first_name', 'last_name', 'profile_image', 'dob',
             'is_email_verified', 'is_trainer', 'role',
             'full_name', 'contact_no', 'bio', 'expertise_categories',
-            'years_of_experience', 'pricing_per_session', 'session_type',
+            'years_of_experience', 'pricing_per_session', 'session_type', 'location',
             'is_active', 'is_receiving_promotional_email', 'agreed_to_policies',
             'social_provider', 'created_at', 'updated_at',
             'id_proof_url', 'verification_status', 'profile_completion',
@@ -91,6 +91,45 @@ class UserBaseDetailSerializer(serializers.ModelSerializer):
         return score
 
 
+class ClientProfileSerializer(serializers.ModelSerializer):
+    role = serializers.SerializerMethodField()
+    profile_image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = [
+            'id', 'uuid', 'email', 'username',
+            'first_name', 'last_name', 'dob', 'contact_no',
+            'profile_image_url',
+            'is_email_verified', 'is_receiving_promotional_email',
+            'role', 'created_at', 'updated_at',
+        ]
+        read_only_fields = fields
+
+    def get_role(self, obj):
+        return 'client'
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_profile_image_url(self, obj):
+        if not obj.profile_image:
+            return None
+        request = self.context.get('request')
+        path = '/api/system/client/profile-image/'
+        return request.build_absolute_uri(path) if request else path
+
+
+class ClientUpdateProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['first_name', 'last_name', 'dob', 'contact_no', 'is_receiving_promotional_email']
+        extra_kwargs = {f: {'required': False} for f in fields}
+
+    def validate_contact_no(self, value):
+        if value and len(value.strip()) < 7:
+            raise serializers.ValidationError('Enter a valid phone number.')
+        return value.strip() if value else value
+
+
 class TrainerUpdateProfileSerializer(serializers.ModelSerializer):
     expertise_categories = serializers.ListField(
         child=serializers.CharField(), required=False, allow_empty=False
@@ -101,7 +140,7 @@ class TrainerUpdateProfileSerializer(serializers.ModelSerializer):
         fields = [
             'first_name', 'last_name', 'dob',
             'full_name', 'contact_no', 'bio', 'expertise_categories',
-            'years_of_experience', 'pricing_per_session', 'session_type',
+            'years_of_experience', 'pricing_per_session', 'session_type', 'location',
             'is_receiving_promotional_email',
         ]
         extra_kwargs = {
@@ -109,7 +148,7 @@ class TrainerUpdateProfileSerializer(serializers.ModelSerializer):
             for f in [
                 'first_name', 'last_name', 'dob', 'full_name', 'contact_no',
                 'bio', 'expertise_categories', 'years_of_experience',
-                'pricing_per_session', 'session_type', 'is_receiving_promotional_email',
+                'pricing_per_session', 'session_type', 'location', 'is_receiving_promotional_email',
             ]
         }
 

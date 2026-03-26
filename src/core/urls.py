@@ -10,6 +10,9 @@ urlpatterns = [
     path('swagger/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
 
     path('api/system/', include('system.urls')),
+    path('api/', include('scheduling.urls')),
+    path('api/', include('trainer_listing.urls')),
+    path('api/', include('payment.urls')),
     # Add more apps here as: path('api/your_app/', include('your_app.urls')),
 ]
 

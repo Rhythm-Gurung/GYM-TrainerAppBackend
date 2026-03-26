@@ -2,6 +2,7 @@ import base64
 
 from django.contrib import admin
 from django.shortcuts import render
+from django.urls import reverse
 from django.utils.html import escape, format_html, mark_safe
 from unfold.admin import ModelAdmin
 
@@ -252,14 +253,14 @@ class TrainerCertificationInline(admin.TabularInline):
 class UserBaseAdmin(ModelAdmin):
     list_display = (
         'email', 'username', 'is_trainer', 'approval_status', 'verification_status_display',
-        'is_email_verified', 'is_active', 'created_at'
+        'is_email_verified', 'is_active', 'created_at', 'view_bookings',
     )
     list_filter = ('is_trainer', 'is_admin_approved',  'is_email_verified', 'is_active', 'is_staff', 'verification_status')
     search_fields = ('email', 'username', 'first_name', 'last_name', 'full_name')
     readonly_fields = (
         'uuid', 'created_at', 'updated_at', 'last_login',
         'profile_image_preview', 'id_proof_preview',
-        'pending_changes_section',
+        'pending_changes_section', 'bookings_section',
     )
     actions = [approve_trainers, reverify_trainers, reject_reverification, reject_trainers]
     inlines = [TrainerGalleryInline, TrainerCertificationInline]
@@ -294,6 +295,9 @@ class UserBaseAdmin(ModelAdmin):
             'classes': ('collapse',),
             'fields': ('social_provider', 'social_provider_id')
         }),
+        ('Bookings', {
+            'fields': ('bookings_section',),
+        }),
         ('Timestamps', {
             'classes': ('collapse',),
             'fields': ('created_at', 'updated_at', 'last_login')
@@ -322,6 +326,28 @@ class UserBaseAdmin(ModelAdmin):
         color, label = badges.get(obj.verification_status, ('gray', obj.verification_status))
         return format_html('<span style="color:{};font-weight:bold;">{}</span>', color, label)
     verification_status_display.short_description = 'Verification'
+
+    def view_bookings(self, obj):
+        base = reverse('admin:scheduling_booking_changelist')
+        param = 'trainer__id__exact' if obj.is_trainer else 'client__id__exact'
+        url = f'{base}?{param}={obj.pk}'
+        return mark_safe(
+            f'<a href="{url}" style="background:#7c3aed;color:#fff;padding:2px 10px;'
+            f'border-radius:6px;font-size:11px;font-weight:600;text-decoration:none;">'
+            f'Bookings →</a>'
+        )
+    view_bookings.short_description = 'Bookings'
+
+    def bookings_section(self, obj):
+        base = reverse('admin:scheduling_booking_changelist')
+        param = 'trainer__id__exact' if obj.is_trainer else 'client__id__exact'
+        url = f'{base}?{param}={obj.pk}'
+        return mark_safe(
+            f'<a href="{url}" style="display:inline-block;background:#7c3aed;color:#fff;'
+            f'padding:6px 16px;border-radius:6px;font-size:13px;font-weight:600;'
+            f'text-decoration:none;">View all bookings for this user →</a>'
+        )
+    bookings_section.short_description = 'Bookings'
 
     def profile_image_preview(self, obj):
         if obj.profile_image:

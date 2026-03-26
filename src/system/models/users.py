@@ -80,6 +80,7 @@ class UserBase(AbstractBaseUser, PermissionsMixin):
     years_of_experience = models.IntegerField(null=True, blank=True)
     pricing_per_session = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     session_type = models.CharField(max_length=10, choices=SESSION_TYPE_CHOICES, null=True, blank=True)
+    location = models.CharField(max_length=100, blank=True, default='')
 
     # Trainer documents (stored as blobs)
     id_proof = models.BinaryField(null=True, blank=True)
@@ -130,6 +131,8 @@ class UserBase(AbstractBaseUser, PermissionsMixin):
 class TrainerCertification(models.Model):
     user = models.ForeignKey(UserBase, on_delete=models.CASCADE, related_name='certifications')
     name = models.CharField(max_length=255, blank=True)
+    issuer = models.CharField(max_length=255, blank=True, default='')
+    year   = models.PositiveSmallIntegerField(null=True, blank=True)
     image = models.BinaryField()
     content_type = models.CharField(max_length=100)
     created_at = models.DateTimeField(auto_now_add=True)
