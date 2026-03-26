@@ -1,0 +1,109 @@
+{% extends 'admin/base.html' %}
+{% load i18n %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block branding %}
+    {% include "unfold/helpers/site_branding.html" %}
+{% endblock %}
+
+{% block content %}
+
+{% if payment_summary %}
+<div style="margin-bottom:24px;">
+
+    <h2 style="font-size:15px;font-weight:700;color:#374151;margin-bottom:12px;letter-spacing:.02em;text-transform:uppercase;">
+        Financial Overview
+    </h2>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;">
+
+        {# ── Admin Khalti Balance ── #}
+        <div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:10px;padding:18px 20px;">
+            <p style="margin:0 0 4px;font-size:11px;font-weight:600;color:#7c3aed;text-transform:uppercase;letter-spacing:.05em;">
+                Admin Khalti Balance
+            </p>
+            <p style="margin:0;font-size:22px;font-weight:800;color:#5b21b6;line-height:1.2;">
+                {{ payment_summary.khalti_balance }}
+            </p>
+            <p style="margin:6px 0 0;font-size:11px;color:#6b7280;">
+                Collected &minus; payouts &minus; refunds
+            </p>
+        </div>
+
+        {# ── Total Collected ── #}
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:18px 20px;">
+            <p style="margin:0 0 4px;font-size:11px;font-weight:600;color:#16a34a;text-transform:uppercase;letter-spacing:.05em;">
+                Total Collected
+            </p>
+            <p style="margin:0;font-size:22px;font-weight:800;color:#15803d;line-height:1.2;">
+                {{ payment_summary.total_collected }}
+            </p>
+            <p style="margin:6px 0 0;font-size:11px;color:#6b7280;">
+                All completed Khalti payments
+            </p>
+        </div>
+
+        {# ── Platform Fee Retained ── #}
+        <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:18px 20px;">
+            <p style="margin:0 0 4px;font-size:11px;font-weight:600;color:#ea580c;text-transform:uppercase;letter-spacing:.05em;">
+                Platform Fee (5%)
+            </p>
+            <p style="margin:0;font-size:22px;font-weight:800;color:#c2410c;line-height:1.2;">
+                {{ payment_summary.platform_fee }}
+            </p>
+            <p style="margin:6px 0 0;font-size:11px;color:#6b7280;">
+                Revenue retained by GymJam
+            </p>
+        </div>
+
+        {# ── Pending Trainer Payouts ── #}
+        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:18px 20px;">
+            <p style="margin:0 0 4px;font-size:11px;font-weight:600;color:#d97706;text-transform:uppercase;letter-spacing:.05em;">
+                Pending Trainer Payouts
+            </p>
+            <p style="margin:0;font-size:22px;font-weight:800;color:#b45309;line-height:1.2;">
+                {{ payment_summary.pending_trainer_payouts }}
+            </p>
+            <p style="margin:6px 0 0;font-size:11px;color:#6b7280;">
+                {{ payment_summary.pending_trainer_count }} payout{{ payment_summary.pending_trainer_count|pluralize }} awaiting transfer
+            </p>
+        </div>
+
+        {# ── On Hold ── #}
+        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:18px 20px;">
+            <p style="margin:0 0 4px;font-size:11px;font-weight:600;color:#2563eb;text-transform:uppercase;letter-spacing:.05em;">
+                On Hold
+            </p>
+            <p style="margin:0;font-size:22px;font-weight:800;color:#1d4ed8;line-height:1.2;">
+                {{ payment_summary.on_hold }}
+            </p>
+            <p style="margin:6px 0 0;font-size:11px;color:#6b7280;">
+                Final 70% locked until session complete
+            </p>
+        </div>
+
+        {# ── Pending Client Refunds ── #}
+        <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:18px 20px;">
+            <p style="margin:0 0 4px;font-size:11px;font-weight:600;color:#dc2626;text-transform:uppercase;letter-spacing:.05em;">
+                Pending Refunds
+            </p>
+            <p style="margin:0;font-size:22px;font-weight:800;color:#b91c1c;line-height:1.2;">
+                {{ payment_summary.pending_refunds }}
+            </p>
+            <p style="margin:6px 0 0;font-size:11px;color:#6b7280;">
+                {{ payment_summary.pending_refund_count }} refund{{ payment_summary.pending_refund_count|pluralize }} to process
+            </p>
+        </div>
+
+    </div>
+</div>
+{% endif %}
+
+    <div class="flex flex-col lg:flex-row lg:gap-8">
+        <div class="grow">
+            {% include "unfold/helpers/app_list_default.html" %}
+        </div>
+        {% include "unfold/helpers/history.html" %}
+    </div>
+{% endblock %}

@@ -39,6 +39,13 @@ class UserBase(AbstractBaseUser, PermissionsMixin):
         ('both', 'Both'),
     ]
 
+    VERIFICATION_STATUS = [
+        ('pending',                    'Pending'),
+        ('verified',                   'Verified'),
+        ('re_verification_required',   'Re-verification Required'),
+        ('reverification_rejected',    'Re-verification Rejected'),
+    ]
+
     uuid = models.UUIDField(unique=True, default=uuid.uuid4)
 
     email = models.EmailField(unique=True)
@@ -54,6 +61,12 @@ class UserBase(AbstractBaseUser, PermissionsMixin):
     )
     dob = models.DateField(null=True, blank=True)
 
+    verification_status = models.CharField(
+        max_length=30,
+        choices=VERIFICATION_STATUS,
+        default='pending',
+    )
+
     # Role
     is_trainer = models.BooleanField(default=False)
     is_admin_approved = models.BooleanField(default=False)  # trainers need manual admin approval
@@ -67,6 +80,7 @@ class UserBase(AbstractBaseUser, PermissionsMixin):
     years_of_experience = models.IntegerField(null=True, blank=True)
     pricing_per_session = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     session_type = models.CharField(max_length=10, choices=SESSION_TYPE_CHOICES, null=True, blank=True)
+    location = models.CharField(max_length=100, blank=True, default='')
 
     # Trainer documents (stored as blobs)
     id_proof = models.BinaryField(null=True, blank=True)
@@ -117,6 +131,8 @@ class UserBase(AbstractBaseUser, PermissionsMixin):
 class TrainerCertification(models.Model):
     user = models.ForeignKey(UserBase, on_delete=models.CASCADE, related_name='certifications')
     name = models.CharField(max_length=255, blank=True)
+    issuer = models.CharField(max_length=255, blank=True, default='')
+    year   = models.PositiveSmallIntegerField(null=True, blank=True)
     image = models.BinaryField()
     content_type = models.CharField(max_length=100)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -128,6 +144,53 @@ class TrainerCertification(models.Model):
 
     def __str__(self):
         return f'{self.user.username} - {self.name}'
+
+
+class TrainerGalleryImage(models.Model):
+    """Trainer's personal gallery — experience photos, etc."""
+    user = models.ForeignKey(UserBase, on_delete=models.CASCADE, related_name='gallery_images')
+    image = models.BinaryField()
+    content_type = models.CharField(max_length=100)
+    caption = models.CharField(max_length=255, blank=True, default='')
+    collection_id = models.UUIDField(db_index=True, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Trainer Gallery Image'
+        verbose_name_plural = 'Trainer Gallery Images'
+        db_table = 'system_trainer_gallery_image'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.user.username} – gallery #{self.pk}'
+
+
+class TrainerProfileChangeLog(models.Model):
+    """Records each change a trainer makes that triggers re-verification."""
+
+    ACTION_CHOICES = [
+        ('id_proof_updated',       'ID Proof Updated'),
+        ('certification_added',    'Certification Added'),
+        ('certification_deleted',  'Certification Deleted'),
+        ('profile_fields_updated', 'Profile Fields Updated'),
+    ]
+
+    user = models.ForeignKey(UserBase, on_delete=models.CASCADE, related_name='change_logs')
+    action = models.CharField(max_length=50, choices=ACTION_CHOICES)
+    # For profile_fields_updated: {"field": {"old": ..., "new": ...}, ...}
+    # For cert changes: {"name": "cert.jpg"}
+    # For id_proof: {}
+    changes = models.JSONField(default=dict, blank=True)
+    changed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Trainer Change Log'
+        verbose_name_plural = 'Trainer Change Logs'
+        db_table = 'system_trainer_change_log'
+        ordering = ['-changed_at']
+
+    def __str__(self):
+        return f'{self.user.username} – {self.get_action_display()} at {self.changed_at:%Y-%m-%d %H:%M}'
 
 
 class UserBaseAddress(models.Model):

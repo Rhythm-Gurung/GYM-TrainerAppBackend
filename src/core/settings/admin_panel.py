@@ -1,8 +1,9 @@
 from django.urls import reverse_lazy
 
 UNFOLD = {
-    "SITE_TITLE": "My Project Admin",   # CHANGE THIS
-    "SITE_HEADER": "My Project Admin",  # CHANGE THIS
+    "SITE_TITLE": "GymJam Admin",
+    "SITE_HEADER": "GymJam Admin",
+    "DASHBOARD_CALLBACK": "payment.dashboard.dashboard_callback",
     "SITE_URL": "/",
     "SITE_SYMBOL": "speed",
     "SHOW_HISTORY": True,
@@ -39,6 +40,22 @@ UNFOLD = {
                         "title": "Verification codes",
                         "icon": "check",
                         "link": lambda request: reverse_lazy("admin:system_verificationcode_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": "Trainer Schedules",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Schedules",
+                        "icon": "calendar_month",
+                        "link": lambda request: reverse_lazy("admin:scheduling_trainerscheduleproxy_changelist"),
+                    },
+                    {
+                        "title": "Bookings",
+                        "icon": "event_available",
+                        "link": lambda request: reverse_lazy("admin:scheduling_booking_changelist"),
                     },
                 ],
             },

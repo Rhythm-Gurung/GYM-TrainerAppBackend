@@ -8,3 +8,16 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Environment variables
+.env
+*.env
+
+# Media files (user uploads)
+src/media/**
+!src/media/**/.gitkeep
+
+# Misc
+tmpclaude*
+.vscode/
+db.sqlite3

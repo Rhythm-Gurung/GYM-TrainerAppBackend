@@ -5,7 +5,7 @@
 <div class="mb-12">
 
     {% component "unfold/components/title.html" %}
-        {% trans "Reject Trainer Account(s)" %}
+        {% if action_title %}{{ action_title }}{% else %}{% trans "Reject Trainer Account(s)" %}{% endif %}
     {% endcomponent %}
 
     {% component "unfold/components/text.html" %}
@@ -22,8 +22,13 @@
         {% for trainer in trainers %}
             <input type="hidden" name="_selected_action" value="{{ trainer.pk }}">
         {% endfor %}
-        <input type="hidden" name="action" value="reject_trainers">
-        <input type="hidden" name="apply" value="1">
+        {% if action_flag %}
+            <input type="hidden" name="action" value="reject_reverification">
+            <input type="hidden" name="{{ action_flag }}" value="1">
+        {% else %}
+            <input type="hidden" name="action" value="reject_trainers">
+            <input type="hidden" name="apply" value="1">
+        {% endif %}
 
         <!-- Problem Areas -->
         <div class="border border-base-200 rounded-default shadow-xs dark:border-base-800 mb-5">

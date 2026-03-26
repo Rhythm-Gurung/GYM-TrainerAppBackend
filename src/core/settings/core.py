@@ -26,6 +26,9 @@ INSTALLED_APPS = [
     'unfold',
 
     'system',
+    'scheduling',
+    'trainer_listing',
+    'payment',
     # Add your other apps here
 
     'django.contrib.admin',
@@ -58,7 +61,7 @@ ROOT_URLCONF = 'core.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR.parent / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
