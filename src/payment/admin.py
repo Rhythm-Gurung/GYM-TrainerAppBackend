@@ -402,9 +402,9 @@ class TrainerPayoutAdmin(ModelAdmin):
             )
         if obj.status == TrainerPayout.STATUS_CANCELLED:
             return mark_safe(
-                f'<div style="padding:12px 16px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;">'
-                f'<p style="margin:0;font-size:13px;color:#dc2626;">✗ This payout was cancelled.</p>'
-                f'</div>'
+                '<div style="padding:12px 16px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;">'
+                '<p style="margin:0;font-size:13px;color:#dc2626;">✗ This payout was cancelled.</p>'
+                '</div>'
             )
         return mark_safe('<span style="color:#9ca3af;">—</span>')
     payout_action.short_description = 'Payment Action'

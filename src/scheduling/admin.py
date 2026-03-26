@@ -1,7 +1,7 @@
 from datetime import date
 
 from django.contrib import admin
-from django.db.models import Count, Max, OuterRef, Q, Subquery
+from django.db.models import Count, Max, OuterRef, Subquery
 from django.urls import reverse
 from django.utils.html import escape, mark_safe
 from unfold.admin import ModelAdmin
@@ -410,7 +410,6 @@ def _action_mark_completed(modeladmin, request, queryset):
     Admin action: mark confirmed bookings as completed.
     Releases the ON_HOLD 70% final payout → PENDING so admin can transfer it.
     """
-    from django.utils import timezone
     from payment.models import TrainerPayout
 
     completed_count = 0

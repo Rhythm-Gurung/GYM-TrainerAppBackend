@@ -64,17 +64,28 @@ def _gallery_image_url(request, trainer_id, image_id):
 def _profile_completeness(trainer):
     """Same scoring as UserBaseDetailSerializer.get_profile_completion."""
     score = 0
-    if trainer.profile_image:       score += 10
-    if trainer.id_proof:            score += 10
-    if trainer.certifications.exists(): score += 10
-    if trainer.full_name:           score += 5
-    if trainer.contact_no:          score += 5
-    if trainer.bio:                 score += 5
-    if trainer.expertise_categories: score += 5
-    if trainer.years_of_experience is not None: score += 5
-    if trainer.pricing_per_session is not None: score += 5
-    if trainer.session_type:        score += 5
-    if trainer.verification_status == 'verified': score += 35
+    if trainer.profile_image:
+        score += 10
+    if trainer.id_proof:
+        score += 10
+    if trainer.certifications.exists():
+        score += 10
+    if trainer.full_name:
+        score += 5
+    if trainer.contact_no:
+        score += 5
+    if trainer.bio:
+        score += 5
+    if trainer.expertise_categories:
+        score += 5
+    if trainer.years_of_experience is not None:
+        score += 5
+    if trainer.pricing_per_session is not None:
+        score += 5
+    if trainer.session_type:
+        score += 5
+    if trainer.verification_status == 'verified':
+        score += 35
     return score
 
 

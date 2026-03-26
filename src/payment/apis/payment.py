@@ -7,7 +7,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from payment.models import ClientRefund, KhaltiPayment, TrainerPayout
+from payment.models import KhaltiPayment, TrainerPayout
 from payment.serializers.payment import InitiatePaymentSerializer, KhaltiPaymentSerializer
 from scheduling.models.schedule import Booking
 
@@ -380,8 +380,10 @@ class VerifyTrainerPayoutView(APIView):
         from django.shortcuts import redirect
         from django.urls import reverse
 
-        list_url   = reverse('admin:payment_trainerpayout_changelist')
-        detail_url = lambda pk: reverse('admin:payment_trainerpayout_change', args=[pk])
+        list_url = reverse('admin:payment_trainerpayout_changelist')
+
+        def detail_url(pk):
+            return reverse('admin:payment_trainerpayout_change', args=[pk])
 
         pidx = request.query_params.get('pidx')
         if not pidx:
