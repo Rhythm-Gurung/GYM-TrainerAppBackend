@@ -29,6 +29,7 @@ INSTALLED_APPS = [
     'scheduling',
     'trainer_listing',
     'payment',
+    'notification.apps.NotificationConfig',
     # Add your other apps here
 
     'django.contrib.admin',
@@ -104,7 +105,7 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Asia/Kathmandu'
 USE_I18N = True
 USE_TZ = True
 
