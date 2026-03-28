@@ -13,9 +13,10 @@ urlpatterns = [
     path('api/', include('scheduling.urls')),
     path('api/', include('trainer_listing.urls')),
     path('api/', include('payment.urls')),
+    path('api/', include('notification.urls')),
     # Add more apps here as: path('api/your_app/', include('your_app.urls')),
 ]
 
 urlpatterns += static(MEDIA_URL, document_root=MEDIA_ROOT)
 urlpatterns += static(STATIC_URL, document_root=STATIC_ROOT)
-urlpatterns += [path('', admin.site.urls)]
+urlpatterns += [path('admin/', admin.site.urls)]

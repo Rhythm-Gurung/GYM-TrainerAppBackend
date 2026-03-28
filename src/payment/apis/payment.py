@@ -2,6 +2,7 @@ import requests
 from django.conf import settings
 from django.db.models import Q, Sum
 from django.utils import timezone
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -36,6 +37,12 @@ class InitiatePaymentView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary='Initiate Khalti Payment',
+        request=InitiatePaymentSerializer,
+        responses={201: OpenApiResponse(description='Payment initiated')},
+        tags=['Payment'],
+    )
     def post(self, request):
         serializer = InitiatePaymentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -151,6 +158,11 @@ class VerifyPaymentView(APIView):
     """
     permission_classes = [AllowAny]
 
+    @extend_schema(
+        summary='Verify Khalti Payment (Return URL)',
+        responses={200: OpenApiResponse(description='HTML response')},
+        tags=['Payment'],
+    )
     def get(self, request):
         from django.http import HttpResponse
 
@@ -344,6 +356,11 @@ class PaymentStatusView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary='Get Payment Status for Booking',
+        responses={200: OpenApiResponse(response=KhaltiPaymentSerializer)},
+        tags=['Payment'],
+    )
     def get(self, request, booking_id):
         try:
             booking = Booking.objects.get(id=booking_id, client=request.user)
@@ -375,6 +392,11 @@ class VerifyTrainerPayoutView(APIView):
     """
     permission_classes = [AllowAny]
 
+    @extend_schema(
+        summary='Verify Trainer Payout (Return URL)',
+        responses={200: OpenApiResponse(description='Redirect/HTML')},
+        tags=['Payment'],
+    )
     def get(self, request):
         from django.contrib import messages
         from django.shortcuts import redirect
@@ -456,6 +478,11 @@ class TrainerEarningsView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary='Trainer Earnings',
+        responses={200: OpenApiResponse(description='Earnings summary')},
+        tags=['Payment'],
+    )
     def get(self, request):
         if not request.user.is_trainer:
             return Response({'detail': 'Only trainers can access earnings.'}, status=status.HTTP_403_FORBIDDEN)
