@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     'trainer_listing',
     'payment',
     'notification.apps.NotificationConfig',
+    'chat.apps.ChatConfig',
     # Add your other apps here
 
     'django.contrib.admin',
