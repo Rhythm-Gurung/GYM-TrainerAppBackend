@@ -133,6 +133,18 @@ class MessagingApiTestCase(TestCase):
         self.assertTrue(msg1.is_read)
         self.assertTrue(msg2.is_read)
 
+    def test_mark_messages_read_creates_missing_session(self):
+        """Read endpoint should not fail when chat session row does not exist yet."""
+        self.session.delete()
+
+        token = self._get_token(self.client_user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+        response = self.client.post(f'/api/chat/read/{self.booking.id}/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['marked_count'], 0)
+        self.assertTrue(ChatSession.objects.filter(booking=self.booking).exists())
+
     def test_chat_is_disabled_after_booking_completed(self):
         """Chat must be disabled once booking moves out of confirmed state."""
         self.booking.status = Booking.STATUS_COMPLETED

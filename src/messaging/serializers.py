@@ -17,10 +17,11 @@ class UserBasicSerializer(serializers.ModelSerializer):
 class ChatMessageSerializer(serializers.ModelSerializer):
     """Serializer for individual chat messages."""
     sender = UserBasicSerializer(read_only=True)
+    sender_id = serializers.IntegerField(source='sender.id', read_only=True)
     
     class Meta:
         model = ChatMessage
-        fields = ['id', 'sender', 'content', 'timestamp', 'is_read']
+        fields = ['id', 'sender', 'sender_id', 'content', 'timestamp', 'is_read']
         read_only_fields = ['id', 'sender', 'timestamp']
 
 
@@ -49,6 +50,7 @@ class ChatSessionSerializer(serializers.ModelSerializer):
             return {
                 'id': latest.id,
                 'content': latest.content,
+                'sender_id': latest.sender_id,
                 'sender_username': latest.sender.username,
                 'timestamp': latest.timestamp.isoformat(),
             }

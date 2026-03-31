@@ -1,3 +1,4 @@
+from asgiref.sync import async_to_sync
 from django.db.models import Q
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
@@ -6,6 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from messaging.models import ChatMessage, ChatSession
+from messaging.consumers import push_badge_update
 from messaging.serializers import (
     ChatSessionSerializer,
     ChatMessageSerializer,
@@ -149,9 +151,6 @@ def chat_history(request, booking_id):
         403: OpenApiResponse(
             description="User not part of this chat session"
         ),
-        404: OpenApiResponse(
-            description="Chat session not found"
-        ),
     },
     tags=["Messaging"]
 )
@@ -180,14 +179,14 @@ def mark_messages_read(request, booking_id):
             status=status.HTTP_403_FORBIDDEN
         )
     
-    # Get chat session
-    try:
-        session = ChatSession.objects.get(booking=booking)
-    except ChatSession.DoesNotExist:
-        return Response(
-            {'detail': 'Chat session not found'},
-            status=status.HTTP_404_NOT_FOUND
-        )
+    # Get or create chat session so read endpoint is safe for first-time chats
+    session, _ = ChatSession.objects.get_or_create(
+        booking=booking,
+        defaults={
+            'trainer': booking.trainer,
+            'client': booking.client,
+        }
+    )
     
     # Parse request data
     serializer = MarkMessagesReadSerializer(data=request.data)
@@ -210,6 +209,9 @@ def mark_messages_read(request, booking_id):
             is_read=False
         ).exclude(sender=user).update(is_read=True)
     
+    # Push fresh badge counts to the reader so their badge clears in real-time
+    async_to_sync(push_badge_update)(user.id)
+
     return Response(
         {'marked_count': updated_count},
         status=status.HTTP_200_OK
