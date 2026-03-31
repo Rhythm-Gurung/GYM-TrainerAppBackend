@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from .environments import DB_HOST, DB_NAME, DB_PASSWORD, DB_USERNAME, REDIS_HOST, REDIS_PASSWORD, REDIS_USERNAME
+from .environments import DB_HOST, DB_NAME, DB_PASSWORD, DB_USERNAME, REDIS_HOST, REDIS_PASSWORD, REDIS_USERNAME, CHANNEL
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -23,6 +23,9 @@ CORS_ALLOW_CREDENTIALS = True
 
 # Application definition
 INSTALLED_APPS = [
+    'daphne',
+    'channels',
+
     'unfold',
 
     'system',
@@ -30,6 +33,8 @@ INSTALLED_APPS = [
     'trainer_listing',
     'payment',
     'notification.apps.NotificationConfig',
+    'chat.apps.ChatConfig',
+    'messaging.apps.MessagingConfig',
     # Add your other apps here
 
     'django.contrib.admin',
@@ -76,6 +81,23 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'core.wsgi.application'
+ASGI_APPLICATION = 'core.asgi.application'
+
+# Channel Layers Configuration — uses in-memory for development, Redis for production
+_REDIS_URL = (
+    f'redis://{REDIS_USERNAME}:{REDIS_PASSWORD}@{REDIS_HOST}:6379/{CHANNEL}'
+    if REDIS_HOST
+    else 'redis://localhost:6379/0'
+)
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [_REDIS_URL],
+        },
+    },
+}
 
 # Database
 if not DB_HOST:
@@ -125,6 +147,9 @@ else:
             "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
         }
     }
+
+# WebSocket authentication settings
+WEBSOCKET_ACCEPT_ALL = False  # Require proper authentication
 
 # This tells Django to use the custom User model from system app
 AUTH_USER_MODEL = "system.UserBase"

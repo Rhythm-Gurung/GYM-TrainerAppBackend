@@ -14,6 +14,8 @@ urlpatterns = [
     path('api/', include('trainer_listing.urls')),
     path('api/', include('payment.urls')),
     path('api/', include('notification.urls')),
+    path('api/', include('chat.urls')),
+    path('api/', include('messaging.urls')),
     # Add more apps here as: path('api/your_app/', include('your_app.urls')),
 ]
 

@@ -13,6 +13,9 @@ wheels/
 .env
 *.env
 
+
+CHAT_INTEGRATION.md 
+
 # Media files (user uploads)
 src/media/**
 !src/media/**/.gitkeep

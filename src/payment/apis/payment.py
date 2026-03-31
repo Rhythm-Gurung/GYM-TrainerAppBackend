@@ -1,6 +1,8 @@
 import requests
 from django.conf import settings
+from django.db import transaction
 from django.db.models import Q, Sum
+from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
@@ -8,8 +10,13 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from payment.models import KhaltiPayment, TrainerPayout
-from payment.serializers.payment import InitiatePaymentSerializer, KhaltiPaymentSerializer
+from payment.models import KhaltiPayment, PaymentGroup, PaymentGroupBooking, TrainerPayout
+from payment.serializers.payment import (
+    BulkInitiatePaymentSerializer,
+    InitiatePaymentSerializer,
+    KhaltiPaymentSerializer,
+    PaymentGroupSerializer,
+)
 from scheduling.models.schedule import Booking
 
 
@@ -25,6 +32,110 @@ def _khalti_headers():
         'Authorization': f'key {settings.KHALTI_SECRET_KEY}',
         'Content-Type':  'application/json',
     }
+
+
+def _booking_amount_paisa(booking):
+    return int(booking.total_amount * 100)
+
+
+def _ensure_booking_confirmed_and_payouts(booking, total_paisa):
+    if booking.status == Booking.STATUS_ACCEPTED:
+        booking.status = Booking.STATUS_CONFIRMED
+        booking.save(update_fields=['status', 'updated_at'])
+
+    advance_amount = int(total_paisa * 0.25)
+    final_amount   = int(total_paisa * 0.70)
+
+    if not TrainerPayout.objects.filter(
+        booking=booking,
+        payout_type=TrainerPayout.TYPE_ADVANCE,
+    ).exists():
+        TrainerPayout.objects.create(
+            booking=booking,
+            payout_type=TrainerPayout.TYPE_ADVANCE,
+            amount=advance_amount,
+            status=TrainerPayout.STATUS_PENDING,
+        )
+
+    if not TrainerPayout.objects.filter(
+        booking=booking,
+        payout_type=TrainerPayout.TYPE_FINAL,
+    ).exists():
+        TrainerPayout.objects.create(
+            booking=booking,
+            payout_type=TrainerPayout.TYPE_FINAL,
+            amount=final_amount,
+            status=TrainerPayout.STATUS_ON_HOLD,
+        )
+
+
+def _finalize_single_payment(payment, lookup_data):
+    with transaction.atomic():
+        payment = KhaltiPayment.objects.select_for_update().select_related('booking').get(pk=payment.pk)
+        if payment.status == KhaltiPayment.STATUS_COMPLETED:
+            return payment
+
+        total_paisa  = payment.amount
+        platform_fee = int(total_paisa * 0.05)
+
+        payment.status         = KhaltiPayment.STATUS_COMPLETED
+        payment.transaction_id = lookup_data.get('transaction_id', '')
+        payment.platform_fee   = platform_fee
+        payment.khalti_response = lookup_data
+        payment.save(update_fields=['status', 'transaction_id', 'platform_fee', 'khalti_response', 'updated_at'])
+
+        booking = Booking.objects.select_for_update().get(pk=payment.booking_id)
+        _ensure_booking_confirmed_and_payouts(booking, total_paisa)
+
+        payment.booking = booking
+        return payment
+
+
+def _finalize_payment_group(group, lookup_data):
+    with transaction.atomic():
+        group = PaymentGroup.objects.select_for_update().get(pk=group.pk)
+        if group.status == PaymentGroup.STATUS_COMPLETED:
+            return group
+
+        group.status             = PaymentGroup.STATUS_COMPLETED
+        group.provider_reference = lookup_data.get('transaction_id', '')
+        group.khalti_response    = lookup_data
+        group.save(update_fields=['status', 'provider_reference', 'khalti_response', 'updated_at'])
+
+        links = list(
+            PaymentGroupBooking.objects
+            .filter(payment_group=group)
+            .select_related('booking')
+        )
+        booking_ids = [link.booking_id for link in links]
+        bookings = {
+            b.id: b
+            for b in Booking.objects.select_for_update().filter(id__in=booking_ids)
+        }
+
+        for link in links:
+            booking = bookings.get(link.booking_id)
+            if booking is None:
+                continue
+
+            booking_amount = link.amount or _booking_amount_paisa(booking)
+            per_booking_pidx = f'{group.payment_group_id}:{booking.id}'
+            platform_fee = int(booking_amount * 0.05)
+
+            KhaltiPayment.objects.update_or_create(
+                booking=booking,
+                pidx=per_booking_pidx,
+                defaults={
+                    'transaction_id': group.provider_reference,
+                    'amount': booking_amount,
+                    'platform_fee': platform_fee,
+                    'status': KhaltiPayment.STATUS_COMPLETED,
+                    'khalti_response': lookup_data,
+                },
+            )
+            _ensure_booking_confirmed_and_payouts(booking, booking_amount)
+
+        return group
 
 
 class InitiatePaymentView(APIView):
@@ -144,6 +255,215 @@ class InitiatePaymentView(APIView):
         }, status=status.HTTP_201_CREATED)
 
 
+class BulkInitiatePaymentView(APIView):
+    """
+    POST /api/payment/bulk/initiate/
+    Body: { "booking_ids": [<int>, ...] }
+
+    Frontend only sends booking IDs. Backend validates ownership/status and
+    computes total payable amount from DB before initiating Khalti.
+    """
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        summary='Initiate Khalti Bulk Payment',
+        request=BulkInitiatePaymentSerializer,
+        responses={201: OpenApiResponse(description='Bulk payment initiated')},
+        tags=['Payment'],
+    )
+    def post(self, request):
+        serializer = BulkInitiatePaymentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        booking_ids = serializer.validated_data['booking_ids']
+
+        idempotency_key = request.headers.get('Idempotency-Key', '').strip()
+        if idempotency_key:
+            existing = (
+                PaymentGroup.objects
+                .filter(client=request.user, idempotency_key=idempotency_key)
+                .order_by('-created_at')
+                .first()
+            )
+            if existing and existing.status in [PaymentGroup.STATUS_INITIATED, PaymentGroup.STATUS_COMPLETED]:
+                return Response({
+                    'payment_group_id': existing.payment_group_id,
+                    'payment_url': existing.khalti_response.get('payment_url', ''),
+                    'total_amount': existing.total_amount,
+                    'currency': 'NPR',
+                    'expires_at': existing.expires_at,
+                }, status=status.HTTP_200_OK)
+
+        with transaction.atomic():
+            bookings = list(
+                Booking.objects.select_for_update()
+                .select_related('client', 'trainer')
+                .filter(id__in=booking_ids, client=request.user)
+            )
+
+            if len(bookings) != len(booking_ids):
+                found_ids = {b.id for b in bookings}
+                missing = [bid for bid in booking_ids if bid not in found_ids]
+                return Response(
+                    {'detail': 'Some bookings were not found.', 'missing_booking_ids': missing},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            non_accepted = [b.id for b in bookings if b.status != Booking.STATUS_ACCEPTED]
+            if non_accepted:
+                return Response(
+                    {
+                        'detail': 'All selected bookings must be in accepted status.',
+                        'invalid_booking_ids': non_accepted,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            already_paid = [
+                b.id
+                for b in bookings
+                if b.payments.filter(status=KhaltiPayment.STATUS_COMPLETED).exists()
+            ]
+            if already_paid:
+                return Response(
+                    {
+                        'detail': 'Some selected bookings are already paid.',
+                        'already_paid_booking_ids': already_paid,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            trainer_ids = {b.trainer_id for b in bookings}
+            if len(trainer_ids) > 1:
+                return Response(
+                    {'detail': 'Bulk payment currently supports one trainer per checkout.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            client = bookings[0].client
+            trainer = bookings[0].trainer
+            if not client.contact_no:
+                return Response(
+                    {'detail': 'Your phone number is required to make a payment. Please update your profile.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            total_amount = sum(_booking_amount_paisa(b) for b in bookings)
+            if total_amount <= 0:
+                return Response(
+                    {'detail': 'Selected bookings do not have payable amount.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            group = PaymentGroup.objects.create(
+                client=request.user,
+                total_amount=total_amount,
+                status=PaymentGroup.STATUS_INITIATED,
+                idempotency_key=idempotency_key,
+            )
+            PaymentGroupBooking.objects.bulk_create([
+                PaymentGroupBooking(
+                    payment_group=group,
+                    booking=b,
+                    amount=_booking_amount_paisa(b),
+                )
+                for b in bookings
+            ])
+
+        customer_name = (
+            client.full_name
+            or f'{client.first_name} {client.last_name}'.strip()
+            or client.username
+        )
+        trainer_name = (
+            trainer.full_name
+            or f'{trainer.first_name} {trainer.last_name}'.strip()
+            or trainer.username
+        )
+
+        payload = {
+            'return_url':          settings.KHALTI_RETURN_URL,
+            'website_url':         settings.KHALTI_WEBSITE_URL,
+            'amount':              total_amount,
+            'purchase_order_id':   group.payment_group_id,
+            'purchase_order_name': f'{len(bookings)} session(s) with {trainer_name}',
+            'customer_info': {
+                'name':  customer_name,
+                'email': client.email,
+                'phone': client.contact_no,
+            },
+        }
+
+        initiate_url, _ = _khalti_urls()
+        try:
+            resp = requests.post(initiate_url, json=payload, headers=_khalti_headers(), timeout=10)
+            resp.raise_for_status()
+        except requests.exceptions.Timeout:
+            group.status = PaymentGroup.STATUS_FAILED
+            group.save(update_fields=['status', 'updated_at'])
+            return Response({'detail': 'Khalti gateway timeout. Try again.'}, status=status.HTTP_504_GATEWAY_TIMEOUT)
+        except requests.exceptions.RequestException as e:
+            group.status = PaymentGroup.STATUS_FAILED
+            group.save(update_fields=['status', 'updated_at'])
+            err = {}
+            try:
+                err = e.response.json() if e.response is not None else {}
+            except Exception:
+                pass
+            return Response(
+                {'detail': 'Failed to initiate payment with Khalti.', 'khalti_error': err},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        data = resp.json()
+        expires_at = parse_datetime(data.get('expires_at') or '') if data.get('expires_at') else None
+
+        group.pidx = data.get('pidx')
+        group.expires_at = expires_at
+        group.khalti_response = data
+        group.save(update_fields=['pidx', 'expires_at', 'khalti_response', 'updated_at'])
+
+        return Response({
+            'payment_group_id': group.payment_group_id,
+            'payment_url': data.get('payment_url'),
+            'total_amount': group.total_amount,
+            'currency': 'NPR',
+            'expires_at': group.expires_at,
+        }, status=status.HTTP_201_CREATED)
+
+
+class BulkPaymentStatusView(APIView):
+    """
+    GET /api/payment/bulk/status/<payment_group_id>/
+    Returns group status and selected booking statuses.
+    """
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        summary='Get Bulk Payment Status',
+        responses={200: OpenApiResponse(response=PaymentGroupSerializer)},
+        tags=['Payment'],
+    )
+    def get(self, request, payment_group_id):
+        try:
+            group = (
+                PaymentGroup.objects
+                .prefetch_related('bookings')
+                .get(payment_group_id=payment_group_id, client=request.user)
+            )
+        except PaymentGroup.DoesNotExist:
+            return Response({'detail': 'Payment group not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if group.status == PaymentGroup.STATUS_INITIATED and group.pidx:
+            group = _attempt_auto_verify_payment_group(group)
+
+        payload = PaymentGroupSerializer(group).data
+        payload['bookings'] = [
+            {'booking_id': b.id, 'status': b.status}
+            for b in group.bookings.only('id', 'status').order_by('id')
+        ]
+        return Response(payload, status=status.HTTP_200_OK)
+
+
 class VerifyPaymentView(APIView):
     """
     GET /api/payment/verify/
@@ -194,15 +514,21 @@ class VerifyPaymentView(APIView):
             return _html('Missing pidx', '⚠️', 'Invalid Request',
                          'No payment reference was provided.', '#d97706')
 
-        try:
-            payment = KhaltiPayment.objects.select_related('booking__client', 'booking__trainer').get(pidx=pidx)
-        except KhaltiPayment.DoesNotExist:
+        payment = KhaltiPayment.objects.select_related('booking__client', 'booking__trainer').filter(pidx=pidx).first()
+        group = PaymentGroup.objects.select_related('client').filter(pidx=pidx).first()
+
+        if not payment and not group:
             return _html('Not Found', '❓', 'Payment Not Found',
                          'This payment record does not exist.', '#6b7280')
 
-        if payment.status == KhaltiPayment.STATUS_COMPLETED:
+        if payment and payment.status == KhaltiPayment.STATUS_COMPLETED:
             return _html('Already Verified', '✅', 'Payment Confirmed',
                          f'Booking #{payment.booking_id} is already confirmed. You can close this and return to the app.',
+                         '#16a34a')
+
+        if group and group.status == PaymentGroup.STATUS_COMPLETED:
+            return _html('Already Verified', '✅', 'Bulk Payment Confirmed',
+                         f'Payment group {group.payment_group_id} is already confirmed. You can close this and return to the app.',
                          '#16a34a')
 
         # Call Khalti Lookup API
@@ -223,61 +549,66 @@ class VerifyPaymentView(APIView):
                          'Something went wrong. Please return to the app.', '#dc2626')
 
         verified_status = lookup_data.get('status', '')
-        payment.khalti_response = lookup_data
 
         if verified_status == 'Completed':
-            total_paisa    = payment.amount
-            platform_fee   = int(total_paisa * 0.05)
-            advance_amount = int(total_paisa * 0.25)
-            final_amount   = int(total_paisa * 0.70)
+            if payment:
+                payment = _finalize_single_payment(payment, lookup_data)
+                total_paisa = payment.amount
+                booking = payment.booking
+                client  = booking.client
+                trainer = booking.trainer
+                client_name  = client.full_name  or f'{client.first_name} {client.last_name}'.strip()  or client.email
+                trainer_name = trainer.full_name or f'{trainer.first_name} {trainer.last_name}'.strip() or trainer.email
 
-            payment.status         = KhaltiPayment.STATUS_COMPLETED
-            payment.transaction_id = lookup_data.get('transaction_id', '')
-            payment.platform_fee   = platform_fee
-            payment.save()
+                return _html(
+                    'Payment Successful', '🎉', 'Payment Confirmed!',
+                    f'Rs. {total_paisa / 100:,.2f} paid by <strong>{client_name}</strong> '
+                    f'to trainer <strong>{trainer_name}</strong>. '
+                    f'Booking #{booking.id} is confirmed. '
+                    f'You can now close this and return to the app.',
+                    '#16a34a',
+                )
 
-            booking = payment.booking
-            if booking.status == Booking.STATUS_ACCEPTED:
-                booking.status = Booking.STATUS_CONFIRMED
-                booking.save(update_fields=['status', 'updated_at'])
-
-            TrainerPayout.objects.create(
-                booking=booking,
-                payout_type=TrainerPayout.TYPE_ADVANCE,
-                amount=advance_amount,
-                status=TrainerPayout.STATUS_PENDING,
-            )
-            TrainerPayout.objects.create(
-                booking=booking,
-                payout_type=TrainerPayout.TYPE_FINAL,
-                amount=final_amount,
-                status=TrainerPayout.STATUS_ON_HOLD,
-            )
-
-            client  = booking.client
-            trainer = booking.trainer
-            client_name  = client.full_name  or f'{client.first_name} {client.last_name}'.strip()  or client.email
-            trainer_name = trainer.full_name or f'{trainer.first_name} {trainer.last_name}'.strip() or trainer.email
-
+            group = _finalize_payment_group(group, lookup_data)
+            booking_count = group.bookings.count()
             return _html(
-                'Payment Successful', '🎉', 'Payment Confirmed!',
-                f'Rs. {total_paisa / 100:,.2f} paid by <strong>{client_name}</strong> '
-                f'to trainer <strong>{trainer_name}</strong>. '
-                f'Booking #{booking.id} is confirmed. '
+                'Payment Successful', '🎉', 'Bulk Payment Confirmed!',
+                f'Rs. {group.total_amount / 100:,.2f} paid successfully for '
+                f'<strong>{booking_count}</strong> booking(s). '
+                f'Payment Group: <strong>{group.payment_group_id}</strong>. '
                 f'You can now close this and return to the app.',
                 '#16a34a',
             )
 
         failure_map = {
-            'Canceled':      KhaltiPayment.STATUS_CANCELLED,
-            'User canceled': KhaltiPayment.STATUS_CANCELLED,
-            'Expired':       KhaltiPayment.STATUS_EXPIRED,
-            'Failed':        KhaltiPayment.STATUS_FAILED,
+            'Canceled':      'cancelled',
+            'User canceled': 'cancelled',
+            'Expired':       'expired',
+            'Failed':        'failed',
         }
-        payment.status = failure_map.get(verified_status, KhaltiPayment.STATUS_FAILED)
-        payment.save()
+        failed_status = failure_map.get(verified_status, 'failed')
 
-        return _html('Payment Failed', '❌', f'Payment {payment.get_status_display()}',
+        if payment:
+            status_map = {
+                'cancelled': KhaltiPayment.STATUS_CANCELLED,
+                'expired': KhaltiPayment.STATUS_EXPIRED,
+                'failed': KhaltiPayment.STATUS_FAILED,
+            }
+            payment.status = status_map[failed_status]
+            payment.khalti_response = lookup_data
+            payment.save(update_fields=['status', 'khalti_response', 'updated_at'])
+        else:
+            status_map = {
+                'cancelled': PaymentGroup.STATUS_CANCELLED,
+                'expired': PaymentGroup.STATUS_EXPIRED,
+                'failed': PaymentGroup.STATUS_FAILED,
+            }
+            group.status = status_map[failed_status]
+            group.khalti_response = lookup_data
+            group.save(update_fields=['status', 'khalti_response', 'updated_at'])
+
+        failed_label = payment.get_status_display() if payment else group.get_status_display()
+        return _html('Payment Failed', '❌', f'Payment {failed_label}',
                      'Your payment could not be completed. Please return to the app and try again.',
                      '#dc2626')
 
@@ -300,37 +631,9 @@ def _attempt_auto_verify(payment):
         return payment
 
     verified_status = data.get('status', '')
-    payment.khalti_response = data
 
     if verified_status == 'Completed':
-        total_paisa    = payment.amount
-        platform_fee   = int(total_paisa * 0.05)
-        advance_amount = int(total_paisa * 0.25)
-        final_amount   = int(total_paisa * 0.70)
-
-        payment.status         = KhaltiPayment.STATUS_COMPLETED
-        payment.transaction_id = data.get('transaction_id', '')
-        payment.platform_fee   = platform_fee
-        payment.save()
-
-        booking = payment.booking
-        if booking.status == Booking.STATUS_ACCEPTED:
-            booking.status = Booking.STATUS_CONFIRMED
-            booking.save(update_fields=['status', 'updated_at'])
-
-        TrainerPayout.objects.create(
-            booking=booking,
-            payout_type=TrainerPayout.TYPE_ADVANCE,
-            amount=advance_amount,
-            status=TrainerPayout.STATUS_PENDING,
-        )
-        TrainerPayout.objects.create(
-            booking=booking,
-            payout_type=TrainerPayout.TYPE_FINAL,
-            amount=final_amount,
-            status=TrainerPayout.STATUS_ON_HOLD,
-        )
-        return payment
+        return _finalize_single_payment(payment, data)
 
     failure_map = {
         'Canceled':      KhaltiPayment.STATUS_CANCELLED,
@@ -340,9 +643,41 @@ def _attempt_auto_verify(payment):
     }
     if verified_status in failure_map:
         payment.status = failure_map[verified_status]
-        payment.save()
+        payment.khalti_response = data
+        payment.save(update_fields=['status', 'khalti_response', 'updated_at'])
 
     return payment
+
+
+def _attempt_auto_verify_payment_group(group):
+    _, lookup_url = _khalti_urls()
+    try:
+        resp = requests.post(
+            lookup_url,
+            json={'pidx': group.pidx},
+            headers=_khalti_headers(),
+            timeout=10,
+        )
+        data = resp.json()
+    except Exception:
+        return group
+
+    verified_status = data.get('status', '')
+    if verified_status == 'Completed':
+        return _finalize_payment_group(group, data)
+
+    failure_map = {
+        'Canceled':      PaymentGroup.STATUS_CANCELLED,
+        'User canceled': PaymentGroup.STATUS_CANCELLED,
+        'Expired':       PaymentGroup.STATUS_EXPIRED,
+        'Failed':        PaymentGroup.STATUS_FAILED,
+    }
+    if verified_status in failure_map:
+        group.status = failure_map[verified_status]
+        group.khalti_response = data
+        group.save(update_fields=['status', 'khalti_response', 'updated_at'])
+
+    return group
 
 
 class PaymentStatusView(APIView):

@@ -5,6 +5,7 @@ from scheduling.apis.client import (
     available_slots_view,
     book_slot_view,
     client_booking_detail_view,
+    client_booking_stats_view,
     client_bookings_list_view,
     client_cancel_booking_view,
 )
@@ -44,6 +45,7 @@ urlpatterns = [
 
     # --- Client: book & manage bookings ---
     path('trainers/<int:trainer_id>/book/',  book_slot_view,               name='client-book-slot'),
+    path('bookings/stats/',                   client_booking_stats_view,    name='client-bookings-stats'),
     path('bookings/',                        client_bookings_list_view,    name='client-bookings-list'),
     path('bookings/<int:booking_id>/',       client_booking_detail_view,   name='client-booking-detail'),
     path('bookings/<int:booking_id>/cancel/', client_cancel_booking_view,  name='client-booking-cancel'),

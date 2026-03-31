@@ -499,6 +499,28 @@ def client_cancel_booking_view(request, booking_id):
     return Response({'status': True, 'data': _booking_to_dict(booking)}, status=status.HTTP_200_OK)
 
 
+# ---------------------------------------------------------------------------
+# Client booking stats — GET /api/bookings/stats/
+# ---------------------------------------------------------------------------
+
+@extend_schema(
+    summary="Get Booking Stats (Client)",
+    responses={200: OpenApiResponse(description="Booking stats for the authenticated client")},
+    tags=["Client – Bookings"],
+)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def client_booking_stats_view(request):
+    client = request.user
+    qs = Booking.objects.filter(client=client)
+    total_count = qs.count()
+    completed_count = qs.filter(status=Booking.STATUS_COMPLETED).count()
+    return Response(
+        {'status': True, 'data': {'total_count': total_count, 'completed_count': completed_count}},
+        status=status.HTTP_200_OK,
+    )
+
+
 def _trigger_refund_on_cancel(booking):
     """
     Called when a client cancels a confirmed booking.
