@@ -34,6 +34,7 @@ EMAIL_PORT = 587
 REDIS_HOST = getenv('REDIS_HOST')
 REDIS_USERNAME = getenv("REDIS_USERNAME")
 REDIS_PASSWORD = getenv("REDIS_PASSWORD")
+CHANNEL = getenv("CHANNEL", "0")
 
 MEDIA_ROOT = path.join(BASE_DIR, 'media')
 STATIC_ROOT = path.join(BASE_DIR, 'staticfiles')
