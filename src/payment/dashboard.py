@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 import json
 
 from django.db.models import (
@@ -7,7 +7,7 @@ from django.db.models import (
     Q,
     Sum,
 )
-from django.db.models.functions import TruncDate, TruncDay, TruncWeek, TruncMonth
+from django.db.models.functions import TruncDate
 from django.utils import timezone
 from django.core.serializers.json import DjangoJSONEncoder
 
