@@ -1,8 +1,9 @@
 from django.urls import reverse_lazy
 
 UNFOLD = {
-    "SITE_TITLE": "GymJam Admin",
-    "SITE_HEADER": "GymJam Admin",
+    "SITE_TITLE": "SETu Admin",
+    "SITE_HEADER": "SETu",
+    "SITE_ICON": "/media/SETu_Images/SETu.png",
     "DASHBOARD_CALLBACK": "payment.dashboard.dashboard_callback",
     "SITE_URL": "/",
     "SITE_SYMBOL": "speed",
@@ -41,6 +42,7 @@ UNFOLD = {
                         "icon": "check",
                         "link": lambda request: reverse_lazy("admin:system_verificationcode_changelist"),
                     },
+                    # Why does Unfold needs Lambda,
                 ],
             },
             {
@@ -56,6 +58,27 @@ UNFOLD = {
                         "title": "Bookings",
                         "icon": "event_available",
                         "link": lambda request: reverse_lazy("admin:scheduling_booking_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": "Payments",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Khalti Payments",
+                        "icon": "payments",
+                        "link": lambda request: reverse_lazy("admin:payment_khaltipayment_changelist"),
+                    },
+                    {
+                        "title": "Trainer Payouts",
+                        "icon": "account_balance_wallet",
+                        "link": lambda request: reverse_lazy("admin:payment_trainerpayout_changelist"),
+                    },
+                    {
+                        "title": "Client Refunds",
+                        "icon": "currency_exchange",
+                        "link": lambda request: reverse_lazy("admin:payment_clientrefund_changelist"),
                     },
                 ],
             },

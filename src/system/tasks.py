@@ -24,7 +24,7 @@ def send_emails(
     html_content = render_to_string(template, context)
     text_content = strip_tags(html_content)
 
-    from_email = "GymJam <" + DEFAULT_FROM_EMAIL + ">"
+    from_email = "SETu <" + DEFAULT_FROM_EMAIL + ">"
 
     email = EmailMultiAlternatives(
         subject=subject,

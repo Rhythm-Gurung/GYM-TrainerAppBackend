@@ -14,6 +14,8 @@ wheels/
 *.env
 
 
+*.md
+
 CHAT_INTEGRATION.md 
 
 # Media files (user uploads)

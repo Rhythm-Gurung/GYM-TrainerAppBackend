@@ -37,7 +37,7 @@ def approve_trainers(modeladmin, request, queryset):
             send_emails(
                 template='trainer_approved.html',
                 recipient_list=[trainer.email],
-                subject='Your GymJam trainer account has been approved!',
+                subject='Your SETu trainer account has been approved!',
                 context={
                     'full_name': trainer.full_name or trainer.username,
                     'email': trainer.email,
@@ -108,7 +108,7 @@ def reject_reverification(modeladmin, request, queryset):
                 send_emails(
                     template='reverification_rejected.html',
                     recipient_list=[trainer.email],
-                    subject='Action required: GymJam profile update rejected',
+                    subject='Action required: SETu profile update rejected',
                     context={
                         'full_name': trainer.full_name or trainer.username,
                         'email': trainer.email,
@@ -174,7 +174,7 @@ def reject_trainers(modeladmin, request, queryset):
                 send_emails(
                     template='trainer_rejected.html',
                     recipient_list=[trainer.email],
-                    subject='Update on your GymJam trainer application',
+                    subject='Update on your SETu trainer application',
                     context={
                         'full_name': trainer.full_name or trainer.username,
                         'email': trainer.email,
@@ -290,10 +290,6 @@ class UserBaseAdmin(ModelAdmin):
         ('Trainer ID Proof', {
             'classes': ('collapse',),
             'fields': ('id_proof_preview', 'id_proof_content_type')
-        }),
-        ('Social Login', {
-            'classes': ('collapse',),
-            'fields': ('social_provider', 'social_provider_id')
         }),
         ('Bookings', {
             'fields': ('bookings_section',),

@@ -11,6 +11,11 @@ from messaging.models import ChatSession, ChatMessage
 
 UserBase = get_user_model()
 
+CHAT_ENABLED_BOOKING_STATUSES = [
+    Booking.STATUS_CONFIRMED,
+    Booking.STATUS_IN_PROGRESS,
+]
+
 
 # ---------------------------------------------------------------------------
 # Module-level badge helpers (usable from consumers and REST views)
@@ -105,7 +110,7 @@ class ChatConsumer(JWTAuthMixin, AsyncWebsocketConsumer):
     WebSocket consumer for real-time trainer-client messaging.
     Requires:
       - Valid JWT token in query string or headers
-      - Confirmed booking between trainer and client
+            - Chat-enabled booking between trainer and client
     """
 
     async def connect(self):
@@ -128,7 +133,7 @@ class ChatConsumer(JWTAuthMixin, AsyncWebsocketConsumer):
 
         booking = await self._get_confirmed_booking(self.booking_id, user)
         if not booking:
-            await self.close(code=4403, reason='Chat enabled only for confirmed booking')
+            await self.close(code=4403, reason='Chat enabled only for confirmed or in-progress booking')
             return
 
         self.user = user
@@ -189,9 +194,9 @@ class ChatConsumer(JWTAuthMixin, AsyncWebsocketConsumer):
         if not booking:
             await self.send(text_data=json.dumps({
                 'type': 'chat_disabled',
-                'message': 'Chat is disabled because this booking is no longer confirmed. Book a new session to continue chatting.',
+                'message': 'Chat is disabled because this booking is no longer confirmed or in progress. Book a new session to continue chatting.',
             }))
-            await self.close(code=4403, reason='Booking is no longer confirmed')
+            await self.close(code=4403, reason='Booking is no longer chat-enabled')
             return
 
         message = await self._save_message(content)
@@ -246,7 +251,7 @@ class ChatConsumer(JWTAuthMixin, AsyncWebsocketConsumer):
         try:
             booking = Booking.objects.get(
                 id=int(booking_id),
-                status=Booking.STATUS_CONFIRMED,
+                status__in=CHAT_ENABLED_BOOKING_STATUSES,
             )
             if booking.trainer_id == user.id or booking.client_id == user.id:
                 return booking

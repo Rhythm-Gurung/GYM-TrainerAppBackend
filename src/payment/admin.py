@@ -151,7 +151,7 @@ def _initiate_payout_to_trainer(modeladmin, request, queryset):
             'purchase_order_id':   f'TRPAYOUT-{payout.id}',
             'purchase_order_name': f'{payout_label} – {trainer_name} – Booking #{payout.booking_id}',
             'customer_info': {
-                'name':  'GymJam Admin',
+                'name':  'SETu Admin',
                 'email': request.user.email,
                 'phone': '9800000000',
             },
@@ -306,7 +306,7 @@ class TrainerPayoutAdmin(ModelAdmin):
             'purchase_order_id':   f'TRPAYOUT-{payout.id}',
             'purchase_order_name': f'{payout_label} – {trainer_name} – Booking #{payout.booking_id}',
             'customer_info': {
-                'name':  'GymJam Admin',
+                'name':  'SETu Admin',
                 'email': request.user.email,
                 'phone': '9800000000',
             },

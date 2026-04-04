@@ -3,10 +3,7 @@ from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
-from django.db import models
 from drf_spectacular.utils import OpenApiResponse, extend_schema
-from google.auth.transport import requests as google_requests
-from google.oauth2 import id_token
 from rest_framework import serializers, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import NotAuthenticated
@@ -16,11 +13,6 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from core.settings.environments import (
-    GOOGLE_OAUTH_ANDROID_CLIENT_ID,
-    GOOGLE_OAUTH_CLIENT_ID,
-    GOOGLE_OAUTH_IOS_CLIENT_ID,
-)
 from system.models.otp import VerificationCode
 from system.serializers.register import UserRegisterSerializer
 from system.serializers.users import MessageResponseSerializer, UserBaseDetailSerializer
@@ -34,9 +26,6 @@ class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(style={"input_type": "password"})
 
-class GoogleLoginSerializer(serializers.Serializer):
-    token = serializers.CharField()
-
 class RefreshTokenSerializer(serializers.Serializer):
     refresh = serializers.CharField()
 
@@ -47,16 +36,6 @@ class TokenResponseSerializer(serializers.Serializer):
 class LoginResponseSerializer(serializers.Serializer):
     tokens = TokenResponseSerializer()
     user = UserBaseDetailSerializer()
-
-class GoogleLoginResponseSerializer(serializers.Serializer):
-    tokens = TokenResponseSerializer()
-    user = UserBaseDetailSerializer()
-
-class SocialAccountLinkSerializer(serializers.Serializer):
-    id_token = serializers.CharField()
-
-class SocialAccountUnlinkSerializer(serializers.Serializer):
-    provider = serializers.ChoiceField(choices=[("google", "Google")])
 
 class WhoAmIResponseSerializer(serializers.Serializer):
     status = serializers.BooleanField(default=True)
@@ -180,156 +159,6 @@ def refresh_token(request):
         return Response(new_tokens, status=status.HTTP_200_OK)
     except Exception:
         return Response({"detail": "Failed to refresh token."}, status=status.HTTP_400_BAD_REQUEST)
-
-
-@extend_schema(
-    summary="Google Login",
-    request=GoogleLoginSerializer,
-    responses={
-        200: OpenApiResponse(response=GoogleLoginResponseSerializer, description="OK"),
-        400: OpenApiResponse(response=MessageResponseSerializer, description="Bad Request"),
-    },
-    tags=["Authentication"]
-)
-@api_view(["POST"])
-@permission_classes([AllowAny])
-def google_login(request):
-    token = request.data.get("token")
-    if not token:
-        return Response({"detail": "Access token is required"}, status=status.HTTP_400_BAD_REQUEST)
-    try:
-        if token.startswith("ya29."):
-            import requests
-            response = requests.get(
-                "https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=" + token, timeout=10
-            )
-            if response.status_code != 200:
-                return Response({"detail": "Invalid access token"}, status=status.HTTP_400_BAD_REQUEST)
-            token_info = response.json()
-            valid_client_ids = [cid for cid in [GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_ANDROID_CLIENT_ID, GOOGLE_OAUTH_IOS_CLIENT_ID] if cid]
-            if token_info.get("audience") not in valid_client_ids:
-                return Response({"detail": "Invalid token audience"}, status=status.HTTP_400_BAD_REQUEST)
-            email = token_info.get("email")
-            google_id = token_info.get("user_id")
-            email_verified = token_info.get("verified_email", False)
-            user_info_resp = requests.get("https://www.googleapis.com/oauth2/v1/userinfo?access_token=" + token, timeout=10)
-            if user_info_resp.status_code == 200:
-                user_info = user_info_resp.json()
-                first_name = user_info.get("given_name", "")
-                last_name = user_info.get("family_name", "")
-            else:
-                first_name = last_name = ""
-        else:
-            idinfo = id_token.verify_oauth2_token(token, google_requests.Request(), audience=GOOGLE_OAUTH_CLIENT_ID)
-            if idinfo["iss"] not in ["accounts.google.com", "https://accounts.google.com"]:
-                return Response({"detail": "Invalid token issuer"}, status=status.HTTP_400_BAD_REQUEST)
-            email = idinfo.get("email")
-            google_id = idinfo.get("sub")
-            first_name = idinfo.get("given_name", "")
-            last_name = idinfo.get("family_name", "")
-            email_verified = idinfo.get("email_verified", False)
-
-        if not email or not google_id:
-            return Response({"detail": "Invalid token data"}, status=status.HTTP_400_BAD_REQUEST)
-
-        user = UserBase.objects.filter(
-            models.Q(email=email) | models.Q(social_provider="google", social_provider_id=google_id)
-        ).first()
-
-        if user:
-            if not user.social_provider:
-                user.social_provider, user.social_provider_id = "google", google_id
-            if not user.first_name and first_name:
-                user.first_name = first_name
-            if not user.last_name and last_name:
-                user.last_name = last_name
-            if email_verified and not user.is_email_verified:
-                user.is_email_verified = True
-            user.save()
-        else:
-            base = first_name.lower().replace(" ", "_") if first_name else email.split("@")[0]
-            username, counter = base, 1
-            while UserBase.objects.filter(username=username).exists():
-                username = base + str(counter)
-                counter += 1
-            user = UserBase.objects.create_user(
-                email=email, password=None, username=username,
-                first_name=first_name, last_name=last_name,
-                social_provider="google", social_provider_id=google_id,
-                is_email_verified=email_verified
-            )
-
-        tokens, details = generate_token(user, request)
-        return Response({"tokens": tokens, "user": details}, status=status.HTTP_200_OK)
-    except ValueError:
-        return Response({"detail": "Invalid ID token"}, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        return Response({"detail": "Authentication failed: " + str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@extend_schema(
-    summary="Link Google Account",
-    request=SocialAccountLinkSerializer,
-    responses={
-        200: OpenApiResponse(response=MessageResponseSerializer, description="Success"),
-        400: OpenApiResponse(response=MessageResponseSerializer, description="Bad Request"),
-        401: OpenApiResponse(response=MessageResponseSerializer, description="Unauthorized"),
-        409: OpenApiResponse(response=MessageResponseSerializer, description="Conflict"),
-    },
-    tags=["Authentication"]
-)
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
-def link_google_account(request):
-    token = request.data.get("id_token")
-    if not token:
-        return Response({"detail": "ID token is required"}, status=status.HTTP_400_BAD_REQUEST)
-    try:
-        idinfo = id_token.verify_oauth2_token(token, google_requests.Request(), audience=GOOGLE_OAUTH_CLIENT_ID)
-        if idinfo["iss"] not in ["accounts.google.com", "https://accounts.google.com"]:
-            return Response({"detail": "Invalid token issuer"}, status=status.HTTP_400_BAD_REQUEST)
-        google_id = idinfo.get("sub")
-        if not google_id:
-            return Response({"detail": "Invalid token data"}, status=status.HTTP_400_BAD_REQUEST)
-        if UserBase.objects.filter(social_provider="google", social_provider_id=google_id).exclude(id=request.user.id).exists():
-            return Response({"detail": "This Google account is already linked to another user"}, status=status.HTTP_409_CONFLICT)
-        if request.user.social_provider == "google":
-            return Response({"detail": "A Google account is already linked to this user"}, status=status.HTTP_409_CONFLICT)
-        request.user.social_provider = "google"
-        request.user.social_provider_id = google_id
-        request.user.save()
-        return Response({"detail": "Google account linked successfully"}, status=status.HTTP_200_OK)
-    except ValueError:
-        return Response({"detail": "Invalid ID token"}, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        return Response({"detail": "Linking failed: " + str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@extend_schema(
-    summary="Unlink Social Account",
-    request=SocialAccountUnlinkSerializer,
-    responses={
-        200: OpenApiResponse(response=MessageResponseSerializer, description="Success"),
-        400: OpenApiResponse(response=MessageResponseSerializer, description="Bad Request"),
-    },
-    tags=["Authentication"]
-)
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
-def unlink_social_account(request):
-    provider = request.data.get("provider")
-    if not provider:
-        return Response({"detail": "Provider is required"}, status=status.HTTP_400_BAD_REQUEST)
-    if provider != "google":
-        return Response({"detail": "Invalid provider"}, status=status.HTTP_400_BAD_REQUEST)
-    if request.user.social_provider != provider:
-        return Response({"detail": "No Google account is linked to this user"}, status=status.HTTP_400_BAD_REQUEST)
-    if not request.user.has_password:
-        return Response({"detail": "Cannot unlink social account. Please set a password first."}, status=status.HTTP_400_BAD_REQUEST)
-    request.user.social_provider = None
-    request.user.social_provider_id = None
-    request.user.save()
-    return Response({"detail": "Google account unlinked successfully"}, status=status.HTTP_200_OK)
 
 
 @extend_schema(

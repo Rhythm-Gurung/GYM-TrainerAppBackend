@@ -1,7 +1,10 @@
 {% extends 'admin/base.html' %}
 {% load i18n %}
 
-{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+{% block title %}
+    {% if subtitle %}{{ subtitle }} | {% endif %}
+    {{ title }} | {{ site_title|default:_('Django site admin') }}
+{% endblock %}
 
 {% block branding %}
     {% include "unfold/helpers/site_branding.html" %}
@@ -9,7 +12,7 @@
 
 {% block content %}
 
-{% if payment_summary %}
+{% if payment_summary %}  
 <div style="margin-bottom:24px;">
 
     <h2 style="font-size:15px;font-weight:700;color:#374151;margin-bottom:12px;letter-spacing:.02em;text-transform:uppercase;">
@@ -53,7 +56,7 @@
                 {{ payment_summary.platform_fee }}
             </p>
             <p style="margin:6px 0 0;font-size:11px;color:#6b7280;">
-                Revenue retained by GymJam
+                Revenue retained by SETu
             </p>
         </div>
 
@@ -98,6 +101,13 @@
 
     </div>
 </div>
+{% endif %}
+
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{#  ANALYTICS CHARTS SECTION                                                   #}
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{% if analytics %}
+    {% include "admin/analytics_charts.html" %}
 {% endif %}
 
     <div class="flex flex-col lg:flex-row lg:gap-8">

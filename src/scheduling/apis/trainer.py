@@ -36,6 +36,7 @@ from scheduling.serializers.schedule import (
     ScheduleOverrideInputSerializer,
     WeeklyScheduleInputSerializer,
 )
+from scheduling.services import refresh_booking_verification_state
 from system.serializers.users import MessageResponseSerializer
 
 # ---------------------------------------------------------------------------
@@ -542,6 +543,8 @@ def _booking_to_dict(b):
         'total_amount':  str(b.total_amount),
         'cancelled_by':  b.cancelled_by,
         'cancel_reason': b.cancel_reason,
+        'session_started_at': b.session_started_at.isoformat() if b.session_started_at else None,
+        'session_ended_at': b.session_ended_at.isoformat() if b.session_ended_at else None,
         'created_at':    b.created_at.isoformat(),
     }
 
@@ -589,7 +592,8 @@ def trainer_bookings_list_view(request):
     if request.query_params.get('upcoming', '').lower() == 'true':
         qs = qs.filter(date__gte=date.today())
 
-    return Response({'status': True, 'data': [_booking_to_dict(b) for b in qs]}, status=status.HTTP_200_OK)
+    bookings = [refresh_booking_verification_state(b) for b in qs]
+    return Response({'status': True, 'data': [_booking_to_dict(b) for b in bookings]}, status=status.HTTP_200_OK)
 
 
 # ---------------------------------------------------------------------------
@@ -616,6 +620,7 @@ def trainer_booking_detail_view(request, booking_id):
     except Booking.DoesNotExist:
         return Response({'status': False, 'message': 'Booking not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+    booking = refresh_booking_verification_state(booking)
     return Response({'status': True, 'data': _booking_to_dict(booking)}, status=status.HTTP_200_OK)
 
 
@@ -640,6 +645,8 @@ def trainer_confirm_booking_view(request, booking_id):
     Status: pending → accepted
     The client is then expected to complete payment, after which the booking becomes confirmed.
     """
+    from scheduling.services.booking_expiry import can_accept_booking
+    
     err = _trainer_only(request.user)
     if err:
         return err
@@ -649,9 +656,11 @@ def trainer_confirm_booking_view(request, booking_id):
     except Booking.DoesNotExist:
         return Response({'status': False, 'message': 'Booking not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-    if booking.status != Booking.STATUS_PENDING:
+    # Check if booking can be accepted (validates status and expiry)
+    can_accept, error_message = can_accept_booking(booking)
+    if not can_accept:
         return Response(
-            {'status': False, 'message': f'Only pending bookings can be accepted. Current status: {booking.status}.'},
+            {'status': False, 'message': error_message},
             status=status.HTTP_400_BAD_REQUEST,
         )
 

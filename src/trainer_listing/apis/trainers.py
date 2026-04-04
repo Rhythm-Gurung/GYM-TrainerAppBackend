@@ -16,6 +16,7 @@ POST   /api/trainers/{trainer_id}/favourite/                — toggle favourite
 
 from django.db.models import Avg, Count, Q
 from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -26,6 +27,8 @@ from scheduling.models import TrainerScheduleScope, WeeklyScheduleDay
 from system.models import TrainerCertification, TrainerGalleryImage, UserBase
 from system.serializers.users import MessageResponseSerializer
 from trainer_listing.models import TrainerFavourite, TrainerReview
+from trainer_listing.serializers import TrainerReviewCreateSerializer
+from scheduling.models import Booking
 
 _IMAGE_CONTENT_TYPES = {
     'jpg': 'image/jpeg',
@@ -496,6 +499,7 @@ def trainer_gallery_image_view(request, trainer_id, image_id):
 @extend_schema(
     methods=['POST'],
     summary="Submit Trainer Review",
+    request=TrainerReviewCreateSerializer,
     responses={
         201: OpenApiResponse(description="Review created"),
         400: OpenApiResponse(response=MessageResponseSerializer, description="Validation error"),
@@ -505,18 +509,59 @@ def trainer_gallery_image_view(request, trainer_id, image_id):
     },
     tags=["Client — Trainers"],
 )
-@api_view(['GET', 'POST'])
+@extend_schema(
+    methods=['DELETE'],
+    summary="Delete Trainer Review",
+    responses={
+        200: OpenApiResponse(response=MessageResponseSerializer, description="Review deleted successfully"),
+        403: OpenApiResponse(response=MessageResponseSerializer, description="You can only delete your own reviews"),
+        404: OpenApiResponse(response=MessageResponseSerializer, description="Review not found"),
+    },
+    tags=["Client — Trainers"],
+)
+@api_view(['GET', 'POST', 'DELETE'])
 @permission_classes([IsAuthenticated])
-def trainer_reviews_view(request, trainer_id):
+def trainer_reviews_view(request, trainer_id, review_id=None):
     trainer = _get_approved_trainer_or_404(trainer_id)
     if not trainer:
         return Response({'status': False, 'message': 'Trainer not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+    if request.method == 'DELETE':
+        if not review_id:
+            return Response(
+                {'status': False, 'message': 'Review ID is required for deletion.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            review = TrainerReview.objects.get(id=review_id, trainer=trainer)
+        except TrainerReview.DoesNotExist:
+            return Response(
+                {'status': False, 'message': 'Review not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Verify the requester is the reviewer
+        if review.reviewer_id != request.user.id:
+            return Response(
+                {'status': False, 'message': 'You can only delete your own reviews.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Delete the review
+        review.delete()
+        
+        return Response(
+            {'status': True, 'message': 'Review deleted successfully.'},
+            status=status.HTTP_200_OK
+        )
+
     if request.method == 'GET':
-        reviews = TrainerReview.objects.filter(trainer=trainer).select_related('reviewer')
+        reviews = TrainerReview.objects.filter(trainer=trainer).select_related('reviewer', 'booking')
         data = [
             {
                 'id':          r.id,
+                'booking_id':  r.booking_id,
                 'reviewer_id': r.reviewer_id,
                 'reviewer_name': (
                     r.reviewer.full_name or
@@ -540,28 +585,40 @@ def trainer_reviews_view(request, trainer_id):
     if request.user.is_trainer:
         return Response({'status': False, 'message': 'Trainers cannot post reviews.'}, status=status.HTTP_403_FORBIDDEN)
 
-    if TrainerReview.objects.filter(trainer=trainer, reviewer=request.user).exists():
-        return Response({'status': False, 'message': 'You have already reviewed this trainer.'}, status=status.HTTP_409_CONFLICT)
+    serializer = TrainerReviewCreateSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
 
-    rating = request.data.get('rating')
-    comment = request.data.get('comment', '')
+    booking = get_object_or_404(
+        Booking.objects.select_related('trainer', 'client'),
+        id=serializer.validated_data['booking_id'],
+        trainer=trainer,
+        client=request.user,
+    )
 
-    if rating is None:
-        return Response({'status': False, 'message': 'rating is required.'}, status=status.HTTP_400_BAD_REQUEST)
-    try:
-        rating = int(rating)
-        if not 1 <= rating <= 5:
-            raise ValueError
-    except (ValueError, TypeError):
-        return Response({'status': False, 'message': 'rating must be an integer between 1 and 5.'}, status=status.HTTP_400_BAD_REQUEST)
+    if booking.status != Booking.STATUS_COMPLETED:
+        return Response(
+            {'status': False, 'message': 'Only completed bookings can be reviewed.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if TrainerReview.objects.filter(booking=booking, reviewer=request.user).exists():
+        return Response({'status': False, 'message': 'You have already reviewed this booking.'}, status=status.HTTP_409_CONFLICT)
+
+    rating = serializer.validated_data['rating']
+    comment = serializer.validated_data['comment']
 
     review = TrainerReview.objects.create(
-        trainer=trainer, reviewer=request.user, rating=rating, comment=comment
+        trainer=trainer,
+        reviewer=request.user,
+        booking=booking,
+        rating=rating,
+        comment=comment,
     )
     return Response({
         'status': True,
         'data': {
             'id':         review.id,
+            'booking_id': review.booking_id,
             'rating':     review.rating,
             'comment':    review.comment,
             'created_at': review.created_at,

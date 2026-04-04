@@ -122,3 +122,12 @@ class ScheduleOverrideInputSerializer(serializers.Serializer):
         if attrs['end_date'] < attrs['start_date']:
             raise serializers.ValidationError({'end_date': 'end_date must be >= start_date.'})
         return attrs
+
+
+class SessionVerificationRequestCreateSerializer(serializers.Serializer):
+    request_type = serializers.ChoiceField(choices=['start', 'end'])
+
+
+class SessionVerificationRespondSerializer(serializers.Serializer):
+    action = serializers.ChoiceField(choices=['accept', 'reject'])
+    reason = serializers.CharField(required=False, allow_blank=True, default='')

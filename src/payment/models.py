@@ -97,6 +97,11 @@ class KhaltiPayment(DefaultModel):
         verbose_name_plural = 'Khalti Payments'
         db_table            = 'payment_khalti_payment'
         ordering            = ['-created_at']
+        indexes = [
+            models.Index(fields=['-created_at'], name='pmt_khalti_created_idx'),
+            models.Index(fields=['status'], name='pmt_khalti_status_idx'),
+            models.Index(fields=['status', '-created_at'], name='pmt_khalti_st_cr_idx'),
+        ]
 
     def __str__(self):
         return f'Payment #{self.id} – Booking #{self.booking_id} ({self.status})'
@@ -143,6 +148,11 @@ class TrainerPayout(DefaultModel):
         verbose_name_plural = 'Trainer Payouts'
         db_table            = 'payment_trainer_payout'
         ordering            = ['-created_at']
+        indexes = [
+            models.Index(fields=['-created_at'], name='pmt_payout_created_idx'),
+            models.Index(fields=['status'], name='pmt_payout_status_idx'),
+            models.Index(fields=['transferred_at'], name='pmt_payout_transf_idx'),
+        ]
 
     def __str__(self):
         return f'Payout #{self.id} – {self.get_payout_type_display()} – Booking #{self.booking_id} ({self.status})'
@@ -181,6 +191,11 @@ class ClientRefund(DefaultModel):
         verbose_name_plural = 'Client Refunds'
         db_table            = 'payment_client_refund'
         ordering            = ['-created_at']
+        indexes = [
+            models.Index(fields=['-created_at'], name='pmt_refund_created_idx'),
+            models.Index(fields=['status'], name='pmt_refund_status_idx'),
+            models.Index(fields=['processed_at'], name='pmt_refund_proc_idx'),
+        ]
 
     def __str__(self):
         return f'Refund #{self.id} – Booking #{self.payment.booking_id} ({self.status})'

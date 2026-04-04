@@ -27,6 +27,7 @@ from rest_framework.response import Response
 
 from scheduling.models import Booking, DateOverride, ScheduleOverride, TrainerScheduleScope, WeeklyScheduleDay
 from scheduling.serializers.schedule import BookingCancelSerializer, BookingCreateSerializer
+from scheduling.services import refresh_booking_verification_state
 from system.serializers.users import MessageResponseSerializer
 
 User = get_user_model()
@@ -296,6 +297,8 @@ def _booking_to_dict(b):
         'total_amount': str(b.total_amount),
         'cancelled_by': b.cancelled_by,
         'cancel_reason': b.cancel_reason,
+        'session_started_at': b.session_started_at.isoformat() if b.session_started_at else None,
+        'session_ended_at': b.session_ended_at.isoformat() if b.session_ended_at else None,
         'created_at':   b.created_at.isoformat(),
     }
 
@@ -427,7 +430,8 @@ def client_bookings_list_view(request):
     if request.query_params.get('upcoming', '').lower() == 'true':
         qs = qs.filter(date__gte=date.today())
 
-    return Response({'status': True, 'data': [_booking_to_dict(b) for b in qs]}, status=status.HTTP_200_OK)
+    bookings = [refresh_booking_verification_state(b) for b in qs]
+    return Response({'status': True, 'data': [_booking_to_dict(b) for b in bookings]}, status=status.HTTP_200_OK)
 
 
 # ---------------------------------------------------------------------------
@@ -449,6 +453,7 @@ def client_booking_detail_view(request, booking_id):
         booking = Booking.objects.select_related('trainer', 'client').get(id=booking_id, client=request.user)
     except Booking.DoesNotExist:
         return Response({'status': False, 'message': 'Booking not found.'}, status=status.HTTP_404_NOT_FOUND)
+    booking = refresh_booking_verification_state(booking)
     return Response({'status': True, 'data': _booking_to_dict(booking)}, status=status.HTTP_200_OK)
 
 
