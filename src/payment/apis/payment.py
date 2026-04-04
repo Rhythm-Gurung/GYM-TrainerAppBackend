@@ -155,6 +155,8 @@ class InitiatePaymentView(APIView):
         tags=['Payment'],
     )
     def post(self, request):
+        from scheduling.services.booking_expiry import can_pay_for_booking
+        
         serializer = InitiatePaymentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         booking_id = serializer.validated_data['booking_id']
@@ -167,9 +169,11 @@ class InitiatePaymentView(APIView):
         except Booking.DoesNotExist:
             return Response({'detail': 'Booking not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        if booking.status != Booking.STATUS_ACCEPTED:
+        # Check if booking can be paid for (validates status and expiry)
+        can_pay, error_message = can_pay_for_booking(booking)
+        if not can_pay:
             return Response(
-                {'detail': f'Payment can only be initiated for accepted bookings. Current status: {booking.status}.'},
+                {'detail': error_message},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -272,6 +276,8 @@ class BulkInitiatePaymentView(APIView):
         tags=['Payment'],
     )
     def post(self, request):
+        from scheduling.services.booking_expiry import can_pay_for_booking
+        
         serializer = BulkInitiatePaymentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         booking_ids = serializer.validated_data['booking_ids']
@@ -308,7 +314,26 @@ class BulkInitiatePaymentView(APIView):
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
-            non_accepted = [b.id for b in bookings if b.status != Booking.STATUS_ACCEPTED]
+            # Check each booking's status and expiry
+            non_accepted = []
+            expired_bookings = []
+            for b in bookings:
+                can_pay, error_message = can_pay_for_booking(b)
+                if not can_pay:
+                    if 'expired' in error_message.lower():
+                        expired_bookings.append(b.id)
+                    else:
+                        non_accepted.append(b.id)
+            
+            if expired_bookings:
+                return Response(
+                    {
+                        'detail': 'Some bookings have expired. The session time has already passed.',
+                        'expired_booking_ids': expired_bookings,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            
             if non_accepted:
                 return Response(
                     {

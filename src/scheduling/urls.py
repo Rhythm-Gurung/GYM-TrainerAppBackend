@@ -9,6 +9,11 @@ from scheduling.apis.client import (
     client_bookings_list_view,
     client_cancel_booking_view,
 )
+from scheduling.apis.session_verification import (
+    booking_session_requests_view,
+    client_respond_session_request_view,
+    trainer_create_session_request_view,
+)
 from scheduling.apis.trainer import (
     override_detail_view,
     overrides_list_view,
@@ -38,6 +43,7 @@ urlpatterns = [
     path('trainer/bookings/<int:booking_id>/',             trainer_booking_detail_view,   name='trainer-booking-detail'),
     path('trainer/bookings/<int:booking_id>/confirm/',     trainer_confirm_booking_view,  name='trainer-booking-confirm'),
     path('trainer/bookings/<int:booking_id>/cancel/',      trainer_cancel_booking_view,   name='trainer-booking-cancel'),
+    path('trainer/bookings/<int:booking_id>/session-requests/', trainer_create_session_request_view, name='trainer-booking-session-request-create'),
 
     # --- Client: trainer availability ---
     path('trainers/<int:trainer_id>/available-slots/',  available_slots_view,  name='client-available-slots'),
@@ -49,6 +55,8 @@ urlpatterns = [
     path('bookings/',                        client_bookings_list_view,    name='client-bookings-list'),
     path('bookings/<int:booking_id>/',       client_booking_detail_view,   name='client-booking-detail'),
     path('bookings/<int:booking_id>/cancel/', client_cancel_booking_view,  name='client-booking-cancel'),
+    path('bookings/<int:booking_id>/session-requests/', booking_session_requests_view, name='client-booking-session-requests-list'),
+    path('bookings/<int:booking_id>/session-requests/<int:request_id>/respond/', client_respond_session_request_view, name='client-booking-session-request-respond'),
 ]
 
 

@@ -1,4 +1,7 @@
+import logging
+
 from asgiref.sync import async_to_sync
+from django.db import transaction
 from django.db.models import Q
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
@@ -15,6 +18,21 @@ from messaging.serializers import (
     MarkMessagesReadResponseSerializer,
 )
 from scheduling.models import Booking
+
+
+logger = logging.getLogger(__name__)
+
+CHAT_ENABLED_BOOKING_STATUSES = [
+    Booking.STATUS_CONFIRMED,
+    Booking.STATUS_IN_PROGRESS,
+]
+
+
+def _safe_push_badge_update(user_id):
+    try:
+        async_to_sync(push_badge_update)(user_id)
+    except Exception as exc:
+        logger.warning('Failed to push badge update for user %s: %s', user_id, exc)
 
 
 class ChatPagination(PageNumberPagination):
@@ -42,10 +60,10 @@ def list_chat_sessions(request):
     """
     user = request.user
     
-    # Get all confirmed bookings where user is trainer or client
+    # Get all chat-enabled bookings where user is trainer or client
     bookings = Booking.objects.filter(
         Q(trainer=user) | Q(client=user),
-        status=Booking.STATUS_CONFIRMED
+        status__in=CHAT_ENABLED_BOOKING_STATUSES,
     ).values_list('id', flat=True)
     
     # Get or create chat sessions for these bookings
@@ -100,16 +118,16 @@ def list_chat_sessions(request):
 def chat_history(request, booking_id):
     """
     Get paginated message history for a specific booking.
-    User must be either trainer or client in the confirmed booking.
+    User must be either trainer or client in a chat-enabled booking.
     """
     user = request.user
     
-    # Verify booking exists and is confirmed
+    # Verify booking exists and is chat-enabled
     try:
-        booking = Booking.objects.get(id=booking_id, status=Booking.STATUS_CONFIRMED)
+        booking = Booking.objects.get(id=booking_id, status__in=CHAT_ENABLED_BOOKING_STATUSES)
     except Booking.DoesNotExist:
         return Response(
-            {'detail': 'Booking not found or not confirmed'},
+            {'detail': 'Booking not found or chat is disabled for this status'},
             status=status.HTTP_404_NOT_FOUND
         )
     
@@ -163,12 +181,12 @@ def mark_messages_read(request, booking_id):
     """
     user = request.user
     
-    # Verify booking exists and is confirmed
+    # Verify booking exists and is chat-enabled
     try:
-        booking = Booking.objects.get(id=booking_id, status=Booking.STATUS_CONFIRMED)
+        booking = Booking.objects.get(id=booking_id, status__in=CHAT_ENABLED_BOOKING_STATUSES)
     except Booking.DoesNotExist:
         return Response(
-            {'detail': 'Booking not found or not confirmed'},
+            {'detail': 'Booking not found or chat is disabled for this status'},
             status=status.HTTP_404_NOT_FOUND
         )
     
@@ -209,8 +227,8 @@ def mark_messages_read(request, booking_id):
             is_read=False
         ).exclude(sender=user).update(is_read=True)
     
-    # Push fresh badge counts to the reader so their badge clears in real-time
-    async_to_sync(push_badge_update)(user.id)
+    # Badge push is best-effort and should run only after DB work is durable.
+    transaction.on_commit(lambda: _safe_push_badge_update(user.id))
 
     return Response(
         {'marked_count': updated_count},

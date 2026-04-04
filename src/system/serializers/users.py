@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.db.models import Avg
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
@@ -14,6 +15,7 @@ class UserBaseDetailSerializer(serializers.ModelSerializer):
     role = serializers.SerializerMethodField()
     id_proof_url = serializers.SerializerMethodField()
     profile_completion = serializers.SerializerMethodField()
+    avg_rating = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -24,8 +26,8 @@ class UserBaseDetailSerializer(serializers.ModelSerializer):
             'full_name', 'contact_no', 'bio', 'expertise_categories',
             'years_of_experience', 'pricing_per_session', 'session_type', 'location',
             'is_active', 'is_receiving_promotional_email', 'agreed_to_policies',
-            'social_provider', 'created_at', 'updated_at',
-            'id_proof_url', 'verification_status', 'profile_completion',
+            'created_at', 'updated_at',
+            'id_proof_url', 'verification_status', 'profile_completion', 'avg_rating',
         ]
         read_only_fields = fields
 
@@ -89,6 +91,24 @@ class UserBaseDetailSerializer(serializers.ModelSerializer):
             score += 35
 
         return score
+
+    @extend_schema_field(serializers.FloatField(allow_null=True))
+    def get_avg_rating(self, obj):
+        """
+        Returns average rating for trainers only.
+        Calculated from TrainerReview table, rounded to 1 decimal place.
+        Returns None for non-trainer users.
+        """
+        if not obj.is_trainer:
+            return None
+
+        from trainer_listing.models import TrainerReview
+        
+        reviews_agg = TrainerReview.objects.filter(trainer=obj).aggregate(
+            avg_rating=Avg('rating')
+        )
+        avg = reviews_agg.get('avg_rating')
+        return round(avg, 1) if avg is not None else 0.0
 
 
 class ClientProfileSerializer(serializers.ModelSerializer):

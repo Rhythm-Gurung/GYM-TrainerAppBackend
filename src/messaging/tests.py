@@ -160,6 +160,21 @@ class MessagingApiTestCase(TestCase):
         history_response = self.client.get(f'/api/chat/history/{self.booking.id}/')
         self.assertEqual(history_response.status_code, status.HTTP_404_NOT_FOUND)
 
+    def test_chat_is_enabled_for_in_progress_booking(self):
+        """Chat should remain available while a session is in progress."""
+        self.booking.status = Booking.STATUS_IN_PROGRESS
+        self.booking.save(update_fields=['status'])
+
+        token = self._get_token(self.trainer)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+        sessions_response = self.client.get('/api/chat/sessions/')
+        self.assertEqual(sessions_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(sessions_response.data), 1)
+
+        history_response = self.client.get(f'/api/chat/history/{self.booking.id}/')
+        self.assertEqual(history_response.status_code, status.HTTP_200_OK)
+
 
 class MessagingConsumerTestCase(TestCase):
     """Test WebSocket consumer for messaging."""
@@ -281,6 +296,11 @@ class ChatSessionModelTestCase(TestCase):
     
     def test_chat_session_unique_constraint(self):
         """Test that only one chat session per booking is allowed."""
+        ChatSession.objects.create(
+            trainer=self.trainer,
+            client=self.client_user,
+            booking=self.booking,
+        )
         
         # Try to create another session for the same booking
         # This should fail due to unique constraint

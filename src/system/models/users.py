@@ -97,10 +97,6 @@ class UserBase(AbstractBaseUser, PermissionsMixin):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    # Social Account Login
-    social_provider = models.CharField(max_length=255, null=True, blank=True)
-    social_provider_id = models.CharField(max_length=255, null=True, blank=True)
-
     USERNAME_FIELD = "email"
     objects = UserbaseManager()
 
@@ -108,6 +104,13 @@ class UserBase(AbstractBaseUser, PermissionsMixin):
         verbose_name = 'User'
         verbose_name_plural = 'Users'
         db_table = 'system_userbase'
+        indexes = [
+            models.Index(fields=['-created_at'], name='usr_created_idx'),
+            models.Index(fields=['is_trainer'], name='usr_is_trainer_idx'),
+            models.Index(fields=['is_trainer', '-created_at'], name='usr_trainer_cr_idx'),
+            models.Index(fields=['is_admin_approved'], name='usr_approved_idx'),
+            models.Index(fields=['verification_status'], name='usr_verif_idx'),
+        ]
 
     def __str__(self):
         return f'{self.username}'

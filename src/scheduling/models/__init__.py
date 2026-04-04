@@ -1,4 +1,4 @@
-from .schedule import Booking, DateOverride, ScheduleOverride, TimeSlot, TrainerScheduleScope, WeeklyScheduleDay
+from .schedule import Booking, DateOverride, ScheduleOverride, SessionVerificationRequest, TimeSlot, TrainerScheduleScope, WeeklyScheduleDay
 
 __all__ = [
     'WeeklyScheduleDay',
@@ -7,4 +7,5 @@ __all__ = [
     'ScheduleOverride',
     'TrainerScheduleScope',
     'Booking',
+    'SessionVerificationRequest',
 ]

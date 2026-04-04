@@ -2,10 +2,19 @@ from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
+from scheduling.models import Booking
+
 
 class TrainerReview(models.Model):
     trainer  = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='reviews')
     reviewer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='given_reviews')
+    booking  = models.ForeignKey(
+        Booking,
+        on_delete=models.CASCADE,
+        related_name='trainer_reviews',
+        null=True,
+        blank=True,
+    )
     rating   = models.PositiveSmallIntegerField(validators=[MinValueValidator(1), MaxValueValidator(5)])
     comment  = models.TextField(blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -15,11 +24,12 @@ class TrainerReview(models.Model):
         verbose_name        = 'Trainer Review'
         verbose_name_plural = 'Trainer Reviews'
         db_table            = 'trainer_listing_review'
-        unique_together     = [('trainer', 'reviewer')]
+        unique_together     = [('booking', 'reviewer')]
         ordering            = ['-created_at']
 
     def __str__(self):
-        return f'{self.reviewer} → {self.trainer} ({self.rating}★)'
+        booking_part = f'booking #{self.booking_id}' if self.booking_id else 'legacy review'
+        return f'{self.reviewer} → {self.trainer} ({self.rating}★, {booking_part})'
 
 
 class TrainerFavourite(models.Model):

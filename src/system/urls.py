@@ -4,14 +4,11 @@ from system.apis.auth import (
     UserRegisterAPIView,
     check_email_exists,
     forgot_password,
-    google_login,
-    link_google_account,
     login,
     logout,
     refresh_token,
     resend_verification_code,
     reset_password,
-    unlink_social_account,
     verify_email,
     verify_forgot_password,
     whoami,
@@ -46,11 +43,6 @@ urlpatterns = [
     path('auth/forgot-password/', forgot_password, name='forgot-password'),
     path('auth/verify-forgot-password/', verify_forgot_password, name='verify-forgot-password'),
     path('auth/reset-password/', reset_password, name='reset-password'),
-
-    # Google OAuth
-    path('auth/google/', google_login, name='google-login'),
-    path('auth/google/link/', link_google_account, name='link-google'),
-    path('auth/google/unlink/', unlink_social_account, name='unlink-social'),
 
     # --- Client Only ---
     # Email verification (OTP-based; trainers skip this flow)
