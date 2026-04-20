@@ -168,8 +168,9 @@ def _initiate_payout_to_trainer(modeladmin, request, queryset):
             continue
 
         if resp.status_code == 200 and data.get('payment_url'):
+            from payment.apis.payment import _fix_payment_url
             pidx        = data['pidx']
-            payment_url = data['payment_url']
+            payment_url = _fix_payment_url(data['payment_url'])
             # Store pidx temporarily so verify endpoint can look up the payout
             payout.transfer_reference = f'pending:{pidx}'
             payout.save(update_fields=['transfer_reference'])
@@ -336,7 +337,8 @@ class TrainerPayoutAdmin(ModelAdmin):
         if resp.status_code == 200 and data.get('payment_url'):
             payout.transfer_reference = f'pending:{data["pidx"]}'
             payout.save(update_fields=['transfer_reference'])
-            return HttpResponseRedirect(data['payment_url'])
+            from payment.apis.payment import _fix_payment_url
+            return HttpResponseRedirect(_fix_payment_url(data['payment_url']))
 
         err = data.get('detail') or data.get('message') or str(data)
         self.message_user(request, f'Khalti error: {err}', level='error')

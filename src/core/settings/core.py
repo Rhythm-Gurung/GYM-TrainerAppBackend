@@ -28,6 +28,13 @@ INSTALLED_APPS = [
 
     'unfold',
 
+    'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+
     'system',
     'scheduling',
     'trainer_listing',
@@ -35,14 +42,6 @@ INSTALLED_APPS = [
     'notification.apps.NotificationConfig',
     'chat.apps.ChatConfig',
     'messaging.apps.MessagingConfig',
-    # Add your other apps here
-
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
 
     'corsheaders',
     'rest_framework',

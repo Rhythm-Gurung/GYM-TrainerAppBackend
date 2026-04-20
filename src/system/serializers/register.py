@@ -40,9 +40,7 @@ class UserRegisterSerializer(serializers.Serializer):
     full_name = serializers.CharField(max_length=255, required=False, allow_blank=True)
     contact_no = serializers.CharField(max_length=20, required=False, allow_blank=True)
     bio = serializers.CharField(required=False, allow_blank=True)
-    expertise_categories = serializers.ListField(
-        child=serializers.CharField(), required=False, allow_empty=False
-    )
+    expertise_categories = serializers.CharField(required=False, allow_blank=True)
     years_of_experience = serializers.IntegerField(required=False, min_value=0)
     pricing_per_session = serializers.DecimalField(
         max_digits=10, decimal_places=2, required=False, min_value=0
@@ -57,7 +55,7 @@ class UserRegisterSerializer(serializers.Serializer):
     certifications = serializers.ListField(
         child=serializers.ImageField(),
         required=False,
-        help_text="List of certification image files. At least one required for trainers."
+        allow_empty=True,
     )
 
     def validate_email(self, value):

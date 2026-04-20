@@ -1,11 +1,12 @@
 """
 Client profile endpoints.
 
-GET   /api/system/client/profile/          — get own profile
-PATCH /api/system/client/profile/          — update profile fields
-GET   /api/system/client/profile-image/    — view profile image
-PUT   /api/system/client/profile-image/    — upload / replace profile image
-DELETE /api/system/client/profile-image/   — remove profile image
+GET   /api/system/client/profile/                    — get own profile
+PATCH /api/system/client/profile/                    — update profile fields
+GET   /api/system/client/profile-image/              — view own profile image
+PUT   /api/system/client/profile-image/              — upload / replace profile image
+DELETE /api/system/client/profile-image/             — remove profile image
+GET   /api/system/client/<user_id>/profile-image/    — view any client's profile image (for reviews etc.)
 """
 
 from django.http import HttpResponse
@@ -15,6 +16,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from system.models import UserBase
 from system.serializers.users import (
     ClientProfileSerializer,
     ClientUpdateProfileSerializer,
@@ -167,7 +169,8 @@ def client_profile_image_view(request):
                 user.profile_image.delete(save=False)
             except Exception:
                 pass
-        user.profile_image.save(image_file.name, image_file, save=True)
+        ext = image_file.name.rsplit('.', 1)[-1].lower() if '.' in image_file.name else 'jpeg'
+        user.profile_image.save(f'profile_{user.id}.{ext}', image_file, save=True)
         return Response(
             {'status': True, 'message': 'Profile image updated successfully.'},
             status=status.HTTP_200_OK,
@@ -188,3 +191,40 @@ def client_profile_image_view(request):
         {'status': True, 'message': 'Profile image removed.'},
         status=status.HTTP_200_OK,
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /api/system/client/<user_id>/profile-image/  — any client's avatar
+# Used by the reviews endpoint to serve reviewer avatars.
+# ---------------------------------------------------------------------------
+
+@extend_schema(
+    methods=['GET'],
+    summary='Get Client Profile Image by ID',
+    responses={
+        200: OpenApiResponse(description='Image binary'),
+        404: OpenApiResponse(response=MessageResponseSerializer, description='Not found'),
+    },
+    tags=['Client'],
+)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def client_profile_image_by_id_view(request, user_id):
+    try:
+        user = UserBase.objects.get(id=user_id, is_trainer=False, is_active=True)
+    except UserBase.DoesNotExist:
+        return Response({'status': False, 'message': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user.profile_image:
+        return Response({'status': False, 'message': 'No profile image found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        name = user.profile_image.name or ''
+        ext  = name.rsplit('.', 1)[-1].lower() if '.' in name else 'jpeg'
+        content_type = _IMAGE_CONTENT_TYPES.get(ext, 'image/jpeg')
+        user.profile_image.open('rb')
+        image_data = user.profile_image.read()
+        user.profile_image.close()
+        return HttpResponse(image_data, content_type=content_type)
+    except Exception:
+        return Response({'status': False, 'message': 'Profile image not accessible.'}, status=status.HTTP_404_NOT_FOUND)

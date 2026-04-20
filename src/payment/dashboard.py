@@ -282,4 +282,12 @@ def dashboard_callback(request, context):
     # JSON encode for JavaScript
     context['analytics_json'] = json.dumps(context['analytics'], cls=DjangoJSONEncoder)
 
+    context['report_periods'] = [
+        ('7d', 'Last 7 Days'),
+        ('30d', 'Last 30 Days'),
+        ('6m', 'Last 6 Months'),
+        ('1y', 'Last Year'),
+        ('overall', 'All Time (Overall)'),
+    ]
+
     return context

@@ -1,6 +1,7 @@
 import base64
 
 from django.contrib import admin
+from django.contrib.auth.models import Group
 from django.shortcuts import render
 from django.urls import reverse
 from django.utils.html import escape, format_html, mark_safe
@@ -487,3 +488,8 @@ class VerificationCodeAdmin(ModelAdmin):
     list_filter = ('otp_for', 'is_email_sent')
     search_fields = ('email',)
     readonly_fields = ('code', 'created_at', 'updated_at')
+
+try:
+    admin.site.unregister(Group)
+except admin.sites.NotRegistered:
+    pass

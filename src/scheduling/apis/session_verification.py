@@ -198,6 +198,9 @@ def client_respond_session_request_view(request, booking_id, request_id):
             booking.session_ended_at = now
             booking.save(update_fields=['status', 'session_ended_at', 'updated_at'])
 
+            from payment.services import sync_payout_on_booking_status
+            sync_payout_on_booking_status(booking, Booking.STATUS_COMPLETED)
+
         create_booking_notification(
             user=booking.trainer,
             title='Session verification accepted',

@@ -1,0 +1,12 @@
+{% load i18n %}
+
+<div class="border-b border-base-200 mb-8 pb-6 dark:border-base-800">
+    <img src="/media/SETu_Images/SETu.png" alt="SETu" class="h-24 mx-auto mb-6" />
+    <h1 class="font-semibold text-center">
+        {% if subtitle %}
+            <span class="block text-font-important-light dark:text-font-important-dark">{{ subtitle }} </span>
+        {% endif %}
+
+        <span class="block font-semibold text-primary-600 tracking-tight text-xl dark:text-primary-500">{{ title }}</span>
+    </h1>
+</div>

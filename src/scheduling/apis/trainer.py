@@ -527,13 +527,21 @@ def schedule_override_detail_view(request, override_id):
 # Trainer Bookings — helpers
 # ---------------------------------------------------------------------------
 
-def _booking_to_dict(b):
+def _booking_to_dict(b, request=None):
+    client = b.client
+    if client.profile_image:
+        path = f'/api/system/client/{client.id}/profile-image/'
+        client_profile_image_url = request.build_absolute_uri(path) if request else path
+    else:
+        client_profile_image_url = None
+
     return {
-        'id':            b.id,
-        'trainer_id':    b.trainer_id,
-        'trainer_name':  b.trainer.full_name or b.trainer.email,
-        'client_id':     b.client_id,
-        'client_name':   b.client.full_name or b.client.email,
+        'id':                       b.id,
+        'trainer_id':               b.trainer_id,
+        'trainer_name':             b.trainer.full_name or b.trainer.email,
+        'client_id':                b.client_id,
+        'client_name':              client.full_name or client.email,
+        'client_profile_image_url': client_profile_image_url,
         'date':          b.date.strftime('%Y-%m-%d'),
         'start_time':    b.start_time.strftime('%H:%M'),
         'end_time':      b.end_time.strftime('%H:%M'),
@@ -593,7 +601,7 @@ def trainer_bookings_list_view(request):
         qs = qs.filter(date__gte=date.today())
 
     bookings = [refresh_booking_verification_state(b) for b in qs]
-    return Response({'status': True, 'data': [_booking_to_dict(b) for b in bookings]}, status=status.HTTP_200_OK)
+    return Response({'status': True, 'data': [_booking_to_dict(b, request) for b in bookings]}, status=status.HTTP_200_OK)
 
 
 # ---------------------------------------------------------------------------
@@ -621,7 +629,7 @@ def trainer_booking_detail_view(request, booking_id):
         return Response({'status': False, 'message': 'Booking not found.'}, status=status.HTTP_404_NOT_FOUND)
 
     booking = refresh_booking_verification_state(booking)
-    return Response({'status': True, 'data': _booking_to_dict(booking)}, status=status.HTTP_200_OK)
+    return Response({'status': True, 'data': _booking_to_dict(booking, request)}, status=status.HTTP_200_OK)
 
 
 # ---------------------------------------------------------------------------
@@ -666,7 +674,7 @@ def trainer_confirm_booking_view(request, booking_id):
 
     booking.status = Booking.STATUS_ACCEPTED
     booking.save(update_fields=['status', 'updated_at'])
-    return Response({'status': True, 'data': _booking_to_dict(booking)}, status=status.HTTP_200_OK)
+    return Response({'status': True, 'data': _booking_to_dict(booking, request)}, status=status.HTTP_200_OK)
 
 
 # ---------------------------------------------------------------------------
@@ -708,4 +716,8 @@ def trainer_cancel_booking_view(request, booking_id):
     booking.cancelled_by  = 'trainer'
     booking.cancel_reason = serializer.validated_data['reason']
     booking.save(update_fields=['status', 'cancelled_by', 'cancel_reason', 'updated_at'])
-    return Response({'status': True, 'data': _booking_to_dict(booking)}, status=status.HTTP_200_OK)
+
+    from payment.services import sync_payout_on_booking_status
+    sync_payout_on_booking_status(booking, Booking.STATUS_CANCELLED)
+
+    return Response({'status': True, 'data': _booking_to_dict(booking, request)}, status=status.HTTP_200_OK)

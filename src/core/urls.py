@@ -4,6 +4,7 @@ from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from core.settings.environments import MEDIA_ROOT, MEDIA_URL, STATIC_ROOT, STATIC_URL
+from payment.report import generate_report
 
 urlpatterns = [
     path('schema/', SpectacularAPIView.as_view(), name='schema'),
@@ -21,4 +22,5 @@ urlpatterns = [
 
 urlpatterns += static(MEDIA_URL, document_root=MEDIA_ROOT)
 urlpatterns += static(STATIC_URL, document_root=STATIC_ROOT)
-urlpatterns += [path('admin/', admin.site.urls)]
+urlpatterns += [path('admin/reports/generate/', generate_report, name='admin_generate_report')]
+urlpatterns += [path('admin/', admin.site.urls)]         

@@ -27,6 +27,17 @@ def _khalti_urls():
         f'{base}/api/v2/epayment/lookup/',
     )
 
+def _fix_payment_url(payment_url):
+    """
+    Khalti's sandbox API (dev.khalti.com) incorrectly returns pay.khalti.com
+    URLs. Sandbox pidx values only work on test-pay.khalti.com.
+    """
+    if not payment_url:
+        return payment_url
+    if 'dev.khalti.com' in settings.KHALTI_GATEWAY_URL:
+        return payment_url.replace('https://pay.khalti.com', 'https://test-pay.khalti.com')
+    return payment_url
+
 def _khalti_headers():
     return {
         'Authorization': f'key {settings.KHALTI_SECRET_KEY}',
@@ -242,7 +253,7 @@ class InitiatePaymentView(APIView):
 
         data        = resp.json()
         pidx        = data.get('pidx')
-        payment_url = data.get('payment_url')
+        payment_url = _fix_payment_url(data.get('payment_url'))
 
         payment = KhaltiPayment.objects.create(
             booking=booking,
@@ -449,7 +460,7 @@ class BulkInitiatePaymentView(APIView):
 
         return Response({
             'payment_group_id': group.payment_group_id,
-            'payment_url': data.get('payment_url'),
+            'payment_url': _fix_payment_url(data.get('payment_url')),
             'total_amount': group.total_amount,
             'currency': 'NPR',
             'expires_at': group.expires_at,
