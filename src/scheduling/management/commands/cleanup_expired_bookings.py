@@ -76,12 +76,14 @@ class Command(BaseCommand):
             return
         
         # Mark all expired bookings as MISSED
+        from payment.services import sync_payout_on_booking_status
         updated_count = 0
         with transaction.atomic():
             for item in expired_bookings:
                 booking = item['booking']
                 booking.status = Booking.STATUS_MISSED
                 booking.save(update_fields=['status', 'updated_at'])
+                sync_payout_on_booking_status(booking, Booking.STATUS_MISSED)
                 updated_count += 1
         
         self.stdout.write(

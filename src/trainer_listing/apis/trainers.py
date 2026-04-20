@@ -73,9 +73,9 @@ def _profile_completeness(trainer):
         score += 10
     if trainer.certifications.exists():
         score += 10
-    if trainer.full_name:
+    if trainer.first_name and trainer.last_name:
         score += 5
-    if trainer.contact_no:
+    if trainer.dob:
         score += 5
     if trainer.bio:
         score += 5
@@ -569,7 +569,7 @@ def trainer_reviews_view(request, trainer_id, review_id=None):
                     r.reviewer.username
                 ),
                 'reviewer_avatar': (
-                    request.build_absolute_uri(f'/api/trainers/{r.reviewer_id}/profile-image/')
+                    request.build_absolute_uri(f'/api/system/client/{r.reviewer_id}/profile-image/')
                     if r.reviewer.profile_image else None
                 ),
                 'rating':     r.rating,

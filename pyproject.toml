@@ -26,6 +26,7 @@ dependencies = [
     "channels>=4.3.2",
     "channels-redis>=4.3.0",
     "google-api-core>=2.30.0",
+    "reportlab>=4.0.0",
 ]
 
 [dependency-groups]

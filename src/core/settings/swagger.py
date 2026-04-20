@@ -2,8 +2,8 @@ from datetime import timedelta
 from .environments import SECRET_KEY
 
 SPECTACULAR_SETTINGS = {
-    'TITLE': 'Your API',                    # CHANGE THIS to your project name
-    'DESCRIPTION': 'Your API description',  # CHANGE THIS
+    'TITLE': 'SETu',                    # CHANGE THIS to your project name
+    'DESCRIPTION': 'GYM Trainer API',  # CHANGE THIS
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
     'COMPONENT_SPLIT_REQUEST': True,

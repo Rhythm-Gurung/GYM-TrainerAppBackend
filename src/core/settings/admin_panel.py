@@ -4,6 +4,7 @@ UNFOLD = {
     "SITE_TITLE": "SETu Admin",
     "SITE_HEADER": "SETu",
     "SITE_ICON": "/media/SETu_Images/SETu.png",
+    "SITE_LOGO": lambda request: "/media/SETu_Images/SETu.png",
     "DASHBOARD_CALLBACK": "payment.dashboard.dashboard_callback",
     "SITE_URL": "/",
     "SITE_SYMBOL": "speed",
@@ -26,7 +27,7 @@ UNFOLD = {
     },
     "SIDEBAR": {
         "show_search": True,
-        "show_all_applications": True,
+        "show_all_applications": False,
         "navigation": [
             {
                 "title": "System",

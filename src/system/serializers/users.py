@@ -52,7 +52,7 @@ class UserBaseDetailSerializer(serializers.ModelSerializer):
 
         Scoring:
           Fields (65 pts):  profile_image=10, id_proof=10, certifications≥1=10,
-                            full_name=5, contact_no=5, bio=5, expertise_categories=5,
+                            first_name+last_name=5, dob=5, bio=5, expertise_categories=5,
                             years_of_experience=5, pricing_per_session=5, session_type=5
           Verification (35 pts): verification_status == 'verified'
 
@@ -71,9 +71,9 @@ class UserBaseDetailSerializer(serializers.ModelSerializer):
             score += 10
         if obj.certifications.exists():
             score += 10
-        if obj.full_name:
+        if obj.first_name and obj.last_name:
             score += 5
-        if obj.contact_no:
+        if obj.dob:
             score += 5
         if obj.bio:
             score += 5

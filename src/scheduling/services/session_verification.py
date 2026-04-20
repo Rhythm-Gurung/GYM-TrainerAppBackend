@@ -41,6 +41,8 @@ def refresh_booking_verification_state(booking: Booking, now=None):
         expires_at__lte=now,
     )
 
+    from payment.services import sync_payout_on_booking_status
+
     expired_any = False
     for req in pending_qs:
         req.status = SessionVerificationRequest.STATUS_EXPIRED
@@ -68,13 +70,14 @@ def refresh_booking_verification_state(booking: Booking, now=None):
 
     if expired_any:
         booking.save(update_fields=['status', 'updated_at'])
-
+        sync_payout_on_booking_status(booking, booking.status)
 
     # Expired booking rule: pending/accepted bookings that have passed session start time
     if booking.status in [Booking.STATUS_PENDING, Booking.STATUS_ACCEPTED]:
         if is_booking_expired(booking, now):
             booking.status = Booking.STATUS_MISSED
             booking.save(update_fields=['status', 'updated_at'])
+            sync_payout_on_booking_status(booking, Booking.STATUS_MISSED)
             create_booking_notification(
                 user=booking.trainer,
                 title='Booking expired',
@@ -96,6 +99,7 @@ def refresh_booking_verification_state(booking: Booking, now=None):
             if not accepted_start_exists:
                 booking.status = Booking.STATUS_MISSED
                 booking.save(update_fields=['status', 'updated_at'])
+                sync_payout_on_booking_status(booking, Booking.STATUS_MISSED)
                 create_booking_notification(
                     user=booking.trainer,
                     title='Booking marked missed',
@@ -116,6 +120,7 @@ def refresh_booking_verification_state(booking: Booking, now=None):
         if not accepted_start_exists:
             booking.status = Booking.STATUS_MISSED
             booking.save(update_fields=['status', 'updated_at'])
+            sync_payout_on_booking_status(booking, Booking.STATUS_MISSED)
             create_booking_notification(
                 user=booking.trainer,
                 title='Booking marked missed',

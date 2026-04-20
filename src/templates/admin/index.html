@@ -12,6 +12,56 @@
 
 {% block content %}
 
+{# ── Report Generation Button (top-right) ────────────────────────────────── #}
+<div style="display:flex;justify-content:flex-end;margin-bottom:20px;">
+    <div style="position:relative;display:inline-block;" id="report-dropdown-wrapper">
+        <button
+            onclick="document.getElementById('report-menu').classList.toggle('hidden')"
+            style="display:inline-flex;align-items:center;gap:8px;background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(124,58,237,.35);"
+        >
+            <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle;">picture_as_pdf</span>
+            Generate Report
+            <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">expand_more</span>
+        </button>
+        <div
+            id="report-menu"
+            class="hidden"
+            style="position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);min-width:200px;z-index:9999;overflow:hidden;"
+        >
+            <div style="padding:8px 14px 6px;font-size:11px;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid #f3f4f6;">
+                Select Period
+            </div>
+            {% for period_key, period_label in report_periods %}
+            <a
+                href="/admin/reports/generate/?period={{ period_key }}"
+                target="_blank"
+                style="display:flex;align-items:center;gap:10px;padding:10px 16px;font-size:13px;color:#374151;text-decoration:none;transition:background .15s;"
+                onmouseover="this.style.background='#f5f3ff';this.style.color='#7c3aed';"
+                onmouseout="this.style.background='';this.style.color='#374151';"
+            >
+                <span class="material-symbols-outlined" style="font-size:16px;color:#a855f7;">calendar_today</span>
+                {{ period_label }}
+            </a>
+            {% empty %}
+            <a href="/admin/reports/generate/?period=7d" target="_blank" style="display:block;padding:10px 16px;font-size:13px;color:#374151;text-decoration:none;">Last 7 Days</a>
+            <a href="/admin/reports/generate/?period=30d" target="_blank" style="display:block;padding:10px 16px;font-size:13px;color:#374151;text-decoration:none;">Last 30 Days</a>
+            <a href="/admin/reports/generate/?period=6m" target="_blank" style="display:block;padding:10px 16px;font-size:13px;color:#374151;text-decoration:none;">Last 6 Months</a>
+            <a href="/admin/reports/generate/?period=1y" target="_blank" style="display:block;padding:10px 16px;font-size:13px;color:#374151;text-decoration:none;">Last Year</a>
+            <a href="/admin/reports/generate/?period=overall" target="_blank" style="display:block;padding:10px 16px;font-size:13px;color:#374151;text-decoration:none;">All Time (Overall)</a>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+<script>
+    document.addEventListener('click', function(e) {
+        var wrapper = document.getElementById('report-dropdown-wrapper');
+        if (wrapper && !wrapper.contains(e.target)) {
+            var menu = document.getElementById('report-menu');
+            if (menu) menu.classList.add('hidden');
+        }
+    });
+</script>
+
 {% if payment_summary %}  
 <div style="margin-bottom:24px;">
 
