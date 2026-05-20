@@ -5,7 +5,6 @@ from django.contrib.auth.models import (
     BaseUserManager,
     PermissionsMixin,
 )
-from django.core.cache import cache
 from django.core.validators import validate_image_file_extension
 from django.db import models
 
@@ -114,13 +113,6 @@ class UserBase(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return f'{self.username}'
-
-    def update_cache(self, access_token):
-        remaining_time = cache.ttl(access_token)
-        cache.set(access_token, self, remaining_time)
-        refresh = cache.get(f'refresh_{access_token}')
-        remaining_time = cache.ttl(f'refresh_{access_token}')
-        cache.set(refresh, self, remaining_time)
 
     @property
     def is_social_account(self):

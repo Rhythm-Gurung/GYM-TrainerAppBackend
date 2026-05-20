@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from .environments import DB_HOST, DB_NAME, DB_PASSWORD, DB_USERNAME, REDIS_HOST, REDIS_PASSWORD, REDIS_USERNAME, CHANNEL
+from .environments import DB_HOST, DB_NAME, DB_PASSWORD, DB_USERNAME
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -37,7 +37,7 @@ INSTALLED_APPS = [
 
     'system',
     'scheduling',
-    'trainer_listing',
+    'trainer_listing.apps.TrainerListingConfig',
     'payment',
     'notification.apps.NotificationConfig',
     'chat.apps.ChatConfig',
@@ -82,19 +82,10 @@ TEMPLATES = [
 WSGI_APPLICATION = 'core.wsgi.application'
 ASGI_APPLICATION = 'core.asgi.application'
 
-# Channel Layers Configuration — uses in-memory for development, Redis for production
-_REDIS_URL = (
-    f'redis://{REDIS_USERNAME}:{REDIS_PASSWORD}@{REDIS_HOST}:6379/{CHANNEL}'
-    if REDIS_HOST
-    else 'redis://localhost:6379/0'
-)
-
+# Channel Layers Configuration
 CHANNEL_LAYERS = {
     'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            'hosts': [_REDIS_URL],
-        },
+        'BACKEND': 'channels.layers.InMemoryChannelLayer',
     },
 }
 
@@ -132,20 +123,12 @@ USE_TZ = True
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Cache — uses Redis if configured, otherwise local memory (dev only)
-if REDIS_HOST:
-    CACHES = {
-        "default": {
-            "BACKEND": "django.core.cache.backends.redis.RedisCache",
-            "LOCATION": f"redis://{REDIS_USERNAME}:{REDIS_PASSWORD}@{REDIS_HOST}:6379",
-        }
+# Cache
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
     }
-else:
-    CACHES = {
-        "default": {
-            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        }
-    }
+}
 
 # WebSocket authentication settings
 WEBSOCKET_ACCEPT_ALL = False  # Require proper authentication

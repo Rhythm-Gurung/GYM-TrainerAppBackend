@@ -26,15 +26,9 @@ EMAIL_HOST_PASSWORD = getenv('EMAIL_HOST_PASSWORD')
 EMAIL_USE_TLS = True
 EMAIL_USE_SSL = False
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = "email-smtp.ap-south-1.amazonaws.com"  # CHANGE THIS if using Gmail: "smtp.gmail.com"
+EMAIL_HOST = getenv('EMAIL_HOST', 'smtp.gmail.com')
 DEFAULT_FROM_EMAIL = getenv('DEFAULT_FROM_EMAIL')
-EMAIL_PORT = 587
-
-# Redis
-REDIS_HOST = getenv('REDIS_HOST')
-REDIS_USERNAME = getenv("REDIS_USERNAME")
-REDIS_PASSWORD = getenv("REDIS_PASSWORD")
-CHANNEL = getenv("CHANNEL", "0")
+EMAIL_PORT = int(getenv('EMAIL_PORT', 587))
 
 # BASE_DIR is src/, media is one level up at project root
 PROJECT_ROOT = BASE_DIR.parent
@@ -43,17 +37,8 @@ STATIC_ROOT = path.join(BASE_DIR, 'staticfiles')
 MEDIA_URL = '/media/'
 STATIC_URL = '/static/'
 
-MINIO_ENDPOINT = getenv('MINIO_ENDPOINT', 'localhost:9000')
-MINIO_ACCESS_KEY = getenv('MINIO_ACCESS_KEY')
-MINIO_SECRET_KEY = getenv('MINIO_SECRET_KEY')
-
 # Gemini API
 GEMINI_API_KEY = getenv('GEMINI_API_KEY')
-
-AWS_ACCESS_KEY_ID = getenv('AWS_ACCESS_KEY_ID')
-AWS_SECRET_ACCESS_KEY = getenv('AWS_SECRET_ACCESS_KEY')
-AWS_STORAGE_BUCKET_NAME = getenv('AWS_STORAGE_BUCKET_NAME')
-AWS_S3_REGION_NAME = getenv('AWS_S3_REGION_NAME')
 
 # Khalti Payment Gateway — Admin merchant (collects from clients)
 KHALTI_SECRET_KEY  = getenv('KHALTI_SECRET_KEY', '')

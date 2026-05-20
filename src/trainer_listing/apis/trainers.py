@@ -15,6 +15,7 @@ POST   /api/trainers/{trainer_id}/favourite/                — toggle favourite
 """
 
 from django.db.models import Avg, Count, Q
+from django.core.cache import cache
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
@@ -26,6 +27,7 @@ from rest_framework.response import Response
 from scheduling.models import TrainerScheduleScope, WeeklyScheduleDay
 from system.models import TrainerCertification, TrainerGalleryImage, UserBase
 from system.serializers.users import MessageResponseSerializer
+from trainer_listing.cache import TRAINER_CACHE_TIMEOUT, make_trainer_cache_key
 from trainer_listing.models import TrainerFavourite, TrainerReview
 from trainer_listing.serializers import TrainerReviewCreateSerializer
 from scheduling.models import Booking
@@ -250,6 +252,8 @@ def _trainer_detail(request, trainer, is_favourited=False):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def trainer_list_view(request):
+    cache_key = make_trainer_cache_key('list', request.get_host(), request.get_full_path())
+
     qs = UserBase.objects.filter(is_trainer=True, is_admin_approved=True, is_active=True)
 
     search = request.query_params.get('search')
@@ -289,8 +293,23 @@ def trainer_list_view(request):
     if request.query_params.get('verified', '').lower() == 'true':
         qs = qs.filter(verification_status='verified')
 
-    trainers = list(qs)
-    trainer_ids = [t.id for t in trainers]
+    cached_data = cache.get(cache_key)
+    if cached_data is None:
+        trainers = list(qs)
+        trainer_ids = [t.id for t in trainers]
+
+        # Batch-fetch ratings (avoids N+1)
+        rating_qs = (
+            TrainerReview.objects.filter(trainer_id__in=trainer_ids)
+            .values('trainer_id')
+            .annotate(avg_rating=Avg('rating'), review_count=Count('id'))
+        )
+        rating_map = {r['trainer_id']: r for r in rating_qs}
+
+        cached_data = [_trainer_list_item(request, t, None, rating_map) for t in trainers]
+        cache.set(cache_key, cached_data, TRAINER_CACHE_TIMEOUT)
+    else:
+        trainer_ids = [t['id'] for t in cached_data]
 
     # Batch-fetch favourites for the current user (avoids N+1)
     favourited_ids = set(
@@ -298,15 +317,7 @@ def trainer_list_view(request):
         .values_list('trainer_id', flat=True)
     )
 
-    # Batch-fetch ratings (avoids N+1)
-    rating_qs = (
-        TrainerReview.objects.filter(trainer_id__in=trainer_ids)
-        .values('trainer_id')
-        .annotate(avg_rating=Avg('rating'), review_count=Count('id'))
-    )
-    rating_map = {r['trainer_id']: r for r in rating_qs}
-
-    data = [_trainer_list_item(request, t, favourited_ids, rating_map) for t in trainers]
+    data = [{**item, 'is_favourited': item['id'] in favourited_ids} for item in cached_data]
     return Response({'status': True, 'count': len(data), 'data': data}, status=status.HTTP_200_OK)
 
 
@@ -330,8 +341,14 @@ def trainer_detail_view(request, trainer_id):
     if not trainer:
         return Response({'status': False, 'message': 'Trainer not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+    cache_key = make_trainer_cache_key('detail', request.get_host(), trainer_id)
+    data = cache.get(cache_key)
+    if data is None:
+        data = _trainer_detail(request, trainer, False)
+        cache.set(cache_key, data, TRAINER_CACHE_TIMEOUT)
+
     is_favourited = TrainerFavourite.objects.filter(client=request.user, trainer=trainer).exists()
-    return Response({'status': True, 'data': _trainer_detail(request, trainer, is_favourited)}, status=status.HTTP_200_OK)
+    return Response({'status': True, 'data': {**data, 'is_favourited': is_favourited}}, status=status.HTTP_200_OK)
 
 
 # ---------------------------------------------------------------------------
@@ -557,29 +574,34 @@ def trainer_reviews_view(request, trainer_id, review_id=None):
         )
 
     if request.method == 'GET':
-        reviews = TrainerReview.objects.filter(trainer=trainer).select_related('reviewer', 'booking')
-        data = [
-            {
-                'id':          r.id,
-                'booking_id':  r.booking_id,
-                'reviewer_id': r.reviewer_id,
-                'reviewer_name': (
-                    r.reviewer.full_name or
-                    f'{r.reviewer.first_name} {r.reviewer.last_name}'.strip() or
-                    r.reviewer.username
-                ),
-                'reviewer_avatar': (
-                    request.build_absolute_uri(f'/api/system/client/{r.reviewer_id}/profile-image/')
-                    if r.reviewer.profile_image else None
-                ),
-                'rating':     r.rating,
-                'comment':    r.comment,
-                'created_at': r.created_at,
-            }
-            for r in reviews
-        ]
-        avg = round(sum(r['rating'] for r in data) / len(data), 1) if data else 0
-        return Response({'status': True, 'count': len(data), 'average_rating': avg, 'data': data}, status=status.HTTP_200_OK)
+        cache_key = make_trainer_cache_key('reviews', request.get_host(), trainer_id)
+        cached_response = cache.get(cache_key)
+        if cached_response is None:
+            reviews = TrainerReview.objects.filter(trainer=trainer).select_related('reviewer', 'booking')
+            data = [
+                {
+                    'id':          r.id,
+                    'booking_id':  r.booking_id,
+                    'reviewer_id': r.reviewer_id,
+                    'reviewer_name': (
+                        r.reviewer.full_name or
+                        f'{r.reviewer.first_name} {r.reviewer.last_name}'.strip() or
+                        r.reviewer.username
+                    ),
+                    'reviewer_avatar': (
+                        request.build_absolute_uri(f'/api/system/client/{r.reviewer_id}/profile-image/')
+                        if r.reviewer.profile_image else None
+                    ),
+                    'rating':     r.rating,
+                    'comment':    r.comment,
+                    'created_at': r.created_at,
+                }
+                for r in reviews
+            ]
+            avg = round(sum(r['rating'] for r in data) / len(data), 1) if data else 0
+            cached_response = {'status': True, 'count': len(data), 'average_rating': avg, 'data': data}
+            cache.set(cache_key, cached_response, TRAINER_CACHE_TIMEOUT)
+        return Response(cached_response, status=status.HTTP_200_OK)
 
     # POST
     if request.user.is_trainer:
